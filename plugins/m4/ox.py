@@ -43,26 +43,17 @@ def make_board(g_id):
     btns.append([Button.inline("🏁 إنهاء اللعبة", data=f"xo_{g_id}_stop")])
     return btns
 
-def get_game_status(game, current_player_id=None):
-    """الحصول على حالة اللعبة مع تحديد الدور"""
-    p1_id = game['p1']
-    p2_id = game['p2']
-    
-    # محاولة جلب الأسماء
-    async def get_name(user_id):
+async def get_user_name(user_id):
+    """جلب اسم المستخدم"""
+    try:
+        user = await client.get_entity(user_id)
+        return user.first_name if user.first_name else f"المستخدم {user_id}"
+    except:
         try:
-            user = await client.get_entity(user_id)
+            user = await bot.get_entity(user_id)
             return user.first_name if user.first_name else f"المستخدم {user_id}"
         except:
             return f"المستخدم {user_id}"
-    
-    # تحديد من صاحب الدور الحالي
-    if game['turn'] == p1_id:
-        turn_name = "اللاعب 1 (⭕)"
-    else:
-        turn_name = "اللاعب 2 (❌)"
-    
-    return turn_name
 
 @client.on(events.NewMessage(pattern=r"^\.xo$"))
 async def start_nethron_xo(event):
@@ -82,20 +73,11 @@ async def start_nethron_xo(event):
     if p1 == p2:
         return await event.edit("**⚠️ لا يمكنك اللعب مع نفسك!**")
 
-    g_id = random.randint(100, 999)
+    g_id = random.randint(1000, 9999)
     
     # جلب الأسماء
-    try:
-        user1 = await client.get_entity(p1)
-        p1_name = user1.first_name if user1.first_name else f"المستخدم {p1}"
-    except:
-        p1_name = f"المستخدم {p1}"
-    
-    try:
-        user2 = await client.get_entity(p2)
-        p2_name = user2.first_name if user2.first_name else f"المستخدم {p2}"
-    except:
-        p2_name = f"المستخدم {p2}"
+    p1_name = await get_user_name(p1)
+    p2_name = await get_user_name(p2)
     
     # اختيار عشوائي لمن يبدأ
     starter = random.choice([p1, p2])
@@ -106,17 +88,21 @@ async def start_nethron_xo(event):
         'p1_name': p1_name,
         'p2_name': p2_name,
         'board': [None]*9,
-        'turn': starter, # يبدأ عشوائياً
-        'sym': {p1: "⭕", p2: "❌"}
+        'turn': starter,
+        'sym': {p1: "⭕", p2: "❌"},
+        'message_id': None,
+        'chat_id': event.chat_id
     }
 
     await event.delete()
     
     # تحديد من صاحب الدور الحالي
     if starter == p1:
-        current_turn = p1_name + " (⭕)"
+        current_turn = f"{p1_name} (⭕)"
+        turn_symbol = "⭕"
     else:
-        current_turn = p2_name + " (❌)"
+        current_turn = f"{p2_name} (❌)"
+        turn_symbol = "❌"
 
     msg = (
         f"🎮 **تحدي X - O (نيثرون)**\n"
@@ -128,10 +114,25 @@ async def start_nethron_xo(event):
         f"📍 اضغط على المربعات للعب"
     )
     
-    await bot.send_message(event.chat_id, msg, buttons=make_board(g_id))
+    # إرسال الرسالة عبر البوت المساعد
+    sent = await bot.send_message(event.chat_id, msg, buttons=make_board(g_id))
+    XO_DATA[g_id]['message_id'] = sent.id
+    XO_DATA[g_id]['chat_id'] = event.chat_id
 
+# معالج ضغطات الأزرار للحساب الشخصي
+@client.on(events.CallbackQuery(pattern=r"xo_(\d+)_(\d+|stop)"))
+async def xo_engine_client(event):
+    """معالج الأزرار للحساب الشخصي"""
+    await handle_xo_callback(event, client)
+
+# معالج ضغطات الأزرار للبوت المساعد
 @bot.on(events.CallbackQuery(pattern=r"xo_(\d+)_(\d+|stop)"))
-async def xo_engine(event):
+async def xo_engine_bot(event):
+    """معالج الأزرار للبوت المساعد"""
+    await handle_xo_callback(event, bot)
+
+async def handle_xo_callback(event, source_client):
+    """دالة موحدة لمعالجة الأزرار"""
     g_id = int(event.pattern_match.group(1))
     act = event.pattern_match.group(2)
     
@@ -146,7 +147,8 @@ async def xo_engine(event):
 
     if act == "stop":
         del XO_DATA[g_id]
-        return await event.edit("❌ تم إلغاء اللعبة.")
+        await event.edit("❌ تم إلغاء اللعبة.")
+        return
 
     # التحقق من الدور
     if event.sender_id != game['turn']:
@@ -157,23 +159,25 @@ async def xo_engine(event):
         return await event.answer("🚫 المكان محجوز!", alert=True)
 
     # تنفيذ الحركة
-    game['board'][pos] = game['sym'][event.sender_id]
+    symbol = game['sym'][event.sender_id]
+    game['board'][pos] = symbol
     
     # فحص الفوز
     win_sets = [(0,1,2), (3,4,5), (6,7,8), (0,3,6), (1,4,7), (2,5,8), (0,4,8), (2,4,6)]
-    winner_sym = None
+    winner = None
+    
     for s in win_sets:
         if game['board'][s[0]] == game['board'][s[1]] == game['board'][s[2]] and game['board'][s[0]]:
-            winner_sym = game['board'][s[0]]
+            # تحديد الفائز
+            if game['board'][s[0]] == "⭕":
+                winner = game['p1']
+                winner_name = game['p1_name']
+            else:
+                winner = game['p2']
+                winner_name = game['p2_name']
             break
 
-    if winner_sym:
-        # تحديد الفائز
-        if winner_sym == "⭕":
-            winner_name = game['p1_name']
-        else:
-            winner_name = game['p2_name']
-        
+    if winner is not None:
         # عرض اللوحة النهائية
         board_text = ""
         for i in range(0, 9, 3):
@@ -183,12 +187,24 @@ async def xo_engine(event):
                 row.append(cell if cell else "⬜")
             board_text += " ".join(row) + "\n"
         
-        await event.edit(
+        final_msg = (
             f"🎊 **مبروك الفوز!** 🏆\n"
-            f"👑 الفائز: {winner_name} ({winner_sym})\n\n"
-            f"📊 اللوحة النهائية:\n{board_text}",
-            buttons=None
+            f"👑 الفائز: {winner_name} ({game['sym'][winner]})\n\n"
+            f"📊 اللوحة النهائية:\n{board_text}"
         )
+        
+        try:
+            # محاولة تحديث الرسالة الأصلية
+            await source_client.edit_message(
+                game['chat_id'],
+                game['message_id'],
+                final_msg,
+                buttons=None
+            )
+        except:
+            # إذا فشل، الرد على الرسالة الحالية
+            await event.edit(final_msg, buttons=None)
+        
         del XO_DATA[g_id]
         return
         
@@ -201,29 +217,75 @@ async def xo_engine(event):
                 row.append(cell if cell else "⬜")
             board_text += " ".join(row) + "\n"
         
-        await event.edit(
+        final_msg = (
             f"🤝 **تعادل!** لا يوجد فائز.\n\n"
-            f"📊 اللوحة النهائية:\n{board_text}",
-            buttons=None
+            f"📊 اللوحة النهائية:\n{board_text}"
         )
+        
+        try:
+            await source_client.edit_message(
+                game['chat_id'],
+                game['message_id'],
+                final_msg,
+                buttons=None
+            )
+        except:
+            await event.edit(final_msg, buttons=None)
+        
         del XO_DATA[g_id]
         return
 
     # تبديل الدور
     game['turn'] = game['p1'] if game['turn'] == game['p2'] else game['p2']
     
-    # تحديث الرسالة مع تحديد صاحب الدور
+    # تحديث الرسالة
     if game['turn'] == game['p1']:
-        current_turn = game['p1_name'] + " (⭕)"
+        current_turn = f"{game['p1_name']} (⭕)"
     else:
-        current_turn = game['p2_name'] + " (❌)"
+        current_turn = f"{game['p2_name']} (❌)"
     
-    await event.edit(
+    updated_msg = (
         f"🎮 **تحدي X - O (نيثرون)**\n"
         f"★──────────★\n"
         f"👤 اللاعب 1: {game['p1_name']} (⭕)\n"
         f"👤 اللاعب 2: {game['p2_name']} (❌)\n"
         f"★──────────★\n"
-        f"🎲 **دور:** {current_turn}",
-        buttons=make_board(g_id)
+        f"🎲 **دور:** {current_turn}"
     )
+    
+    try:
+        await source_client.edit_message(
+            game['chat_id'],
+            game['message_id'],
+            updated_msg,
+            buttons=make_board(g_id)
+        )
+        await event.answer("✓ تم تحديث اللعبة", alert=False)
+    except Exception as e:
+        await event.answer(f"⚠️ حدث خطأ: {str(e)}", alert=True)
+
+# معالج للأوامر الخاصة بالنظافة
+@client.on(events.NewMessage(pattern=r"^\.xo_clean$"))
+async def xo_clean(event):
+    """تنظيف جميع جلسات XO"""
+    if not event.out: return
+    XO_DATA.clear()
+    await event.edit("✅ تم تنظيف جميع جلسات XO")
+
+# معالج للأوامر لعرض الجلسات النشطة
+@client.on(events.NewMessage(pattern=r"^\.xo_sessions$"))
+async def xo_sessions(event):
+    """عرض الجلسات النشطة"""
+    if not event.out: return
+    if not XO_DATA:
+        await event.edit("📭 لا توجد جلسات XO نشطة")
+        return
+    
+    sessions_text = "🎮 **الجلسات النشطة:**\n\n"
+    for g_id, game in XO_DATA.items():
+        sessions_text += f"**ID:** {g_id}\n"
+        sessions_text += f"👤 {game['p1_name']} vs {game['p2_name']}\n"
+        sessions_text += f"🎲 الدور: {'اللاعب 1' if game['turn'] == game['p1'] else 'اللاعب 2'}\n"
+        sessions_text += "─" * 30 + "\n"
+    
+    await event.edit(sessions_text)
