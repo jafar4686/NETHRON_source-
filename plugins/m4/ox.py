@@ -6,11 +6,11 @@ import random
 client = __main__.client
 bot = __main__.bot
 
-# مخزن بيانات اللعبة لضمان عدم التداخل
+# مخزن بيانات اللعبة
 XO_GAMES = {}
 
 # ==========================================
-# 1. كليشة قائمة الأوامر .م4
+# 1. قائمة الأوامر .م4 (تنسيق نيثرون)
 # ==========================================
 @client.on(events.NewMessage(pattern=r"^\.م4$"))
 async def m4_command(event):
@@ -35,7 +35,7 @@ async def m4_command(event):
     await event.edit(m4_text)
 
 # ==========================================
-# 2. نظام لعبة X-O (الإصدار المصحح للأزرار)
+# 2. نظام لعبة X-O (إصلاح استجابة الأزرار)
 # ==========================================
 
 def build_board(game_id):
@@ -63,40 +63,47 @@ def check_winner(board):
 async def start_xo(event):
     if not event.out: return
     
-    reply = await event.get_reply_message()
-    player1 = event.sender_id # أنت
+    player1 = event.sender_id # صاحب الحساب
+    player2 = None
     
+    reply = await event.get_reply_message()
+    
+    # التحقق من نوع المحادثة والخصم
     if event.is_private:
-        player2 = event.chat_id
+        player2 = event.chat_id # في الخاص، الخصم هو صاحب المحادثة
     elif reply:
-        player2 = reply.sender_id # الخصم
+        player2 = reply.sender_id # في المجموعات، الخصم هو الشخص المردود عليه
     else:
-        return await event.edit("**⚠️ يجب الرد على الشخص للعب معه!**")
+        return await event.edit("**⚠️ في المجموعات، يجب الرد على الشخص للعب معه!**")
 
     game_id = random.randint(100, 999)
-    # الخصم (player2) يبدأ دائماً بـ ❌ لضمان أن البوت يستجيب له فوراً
+    # جعل الخصم (الطرف الآخر) هو من يبدأ اللعب دائماً
+    turn = player2 
+
     XO_GAMES[game_id] = {
         'p1': player1, 'p2': player2,
         'board': [None]*9,
-        'turn': player2, 
+        'turn': turn, 
         'sym': {player1: "⭕", player2: "❌"}
     }
 
-    await event.delete() # حذف الأمر من حسابك فوراً
+    await event.delete()
     
-    p2_entity = await client.get_entity(player2)
-    p2_name = p2_entity.first_name
+    try:
+        p2_ent = await client.get_entity(player2)
+        p2_name = p2_ent.first_name
+    except:
+        p2_name = "الخصم"
 
     welcome_msg = (
         "🎮 **تحدي X - O نيثرون**\n"
         "★──────────★\n"
-        f"👤 اللاعب الأول: أنت (⭕)\n"
-        f"👤 اللاعب الثاني: {p2_name} (❌)\n"
+        f"👤 لاعب 1: أنت (⭕)\n"
+        f"👤 لاعب 2: {p2_name} (❌)\n"
         "★──────────★\n"
-        f"🎲 دور اللاعب: {p2_name}"
+        f"🎲 الدور الآن عند: {p2_name}"
     )
 
-    # الإرسال عبر البوت المساعد لضمان ظهور الأزرار
     await bot.send_message(event.chat_id, welcome_msg, buttons=build_board(game_id))
 
 @bot.on(events.CallbackQuery(pattern=r"xo_(\d+)_(\d+|stop)"))
@@ -105,44 +112,45 @@ async def xo_callback(event):
     action = event.pattern_match.group(2)
     
     if game_id not in XO_GAMES:
-        return await event.answer("⚠️ انتهت اللعبة!", alert=True)
+        return await event.answer("⚠️ اللعبة انتهت!", alert=True)
 
     game = XO_GAMES[game_id]
     
-    # معالجة زر الإيقاف
-    if action == "stop":
-        if event.sender_id not in [game['p1'], game['p2']]:
-            return await event.answer("ليست لعبتك!", alert=True)
-        del XO_GAMES[game_id]
-        return await event.edit("❌ تم إنهاء اللعبة من قبل اللاعبين.")
+    # التحقق من أن الضغط من أحد اللاعبين فقط
+    if event.sender_id not in [game['p1'], game['p2']]:
+        return await event.answer("❌ عذراً، هذه اللعبة ليست لك!", alert=True)
 
-    # معالجة حركات اللعب
+    if action == "stop":
+        del XO_GAMES[game_id]
+        return await event.edit("❌ تم إنهاء اللعبة.")
+
+    # التحقق من الدور
     if event.sender_id != game['turn']:
-        return await event.answer("انتظر دورك! ⏳", alert=True)
+        return await event.answer("⏳ انتظر دور الخصم!", alert=True)
 
     move = int(action)
     if game['board'][move] is not None:
-        return await event.answer("هذا المكان مشغول!", alert=True)
+        return await event.answer("🚫 المكان محجوز!", alert=True)
 
-    # وضع العلامة وتحديث الدور
+    # تنفيذ الحركة
     game['board'][move] = game['sym'][event.sender_id]
     
-    # فحص الفوز أو التعادل
+    # فحص النتيجة
     res = check_winner(game['board'])
     if res:
         if res == "draw":
-            await event.edit("🤝 **تعادل!** لا يوجد فائز هذه المرة.", buttons=None)
+            await event.edit("🤝 **تعادل!** لا يوجد فائز.", buttons=None)
         else:
-            winner_user = await bot.get_entity(event.sender_id)
-            await event.edit(f"🎊 **مبروك الفوز!** اللاعب [ {winner_user.first_name} ] هو البطل 🏆", buttons=None)
+            winner_name = (await bot.get_entity(event.sender_id)).first_name
+            await event.edit(f"🎊 **مبروك الفوز لـ [ {winner_name} ]** 🏆", buttons=None)
         del XO_GAMES[game_id]
         return
 
-    # تبديل الدور للطرف الآخر
+    # تبديل الدور
     game['turn'] = game['p1'] if game['turn'] == game['p2'] else game['p2']
     next_user = await bot.get_entity(game['turn'])
     
     await event.edit(
-        f"🎮 **تحدي X - O مستمر**\n🎲 دور اللاعب: {next_user.first_name}",
+        f"🎮 **تحدي X - O مستمر**\n🎲 الدور الآن عند: {next_user.first_name}",
         buttons=build_board(game_id)
-                                 )
+)
