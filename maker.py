@@ -3,12 +3,12 @@ from telethon import TelegramClient, events, Button
 from telethon.sessions import StringSession
 from config import api_id, api_hash
 
-# توكن البوت الخاص بك
+# إعدادات البوت والمجلدات
 BOT_TOKEN = "8136996400:AAEO4uDFUweXXiz49bs91hI_jmvBqh8CStI"
-bot = TelegramClient('MakerBot', api_id, api_hash).start(bot_token=BOT_TOKEN)
+SESSION_DB = "database.txt" # لحفظ السيزونات النصية
+OLD_SESSION_FILE = "session.session" # ملف الجلسة الذي وجدته
 
-# ملف تخزين الجلسات (قاعدة بيانات بسيطة)
-SESSION_DB = "database.txt"
+bot = TelegramClient('MakerBot', api_id, api_hash).start(bot_token=BOT_TOKEN)
 
 if not hasattr(__main__, 'active_sessions'):
     __main__.active_sessions = {}
@@ -25,90 +25,80 @@ async def load_plugins(user_client):
             spec.loader.exec_module(mod)
         except Exception as e: print(f"❌ Error loading {name}: {e}")
 
-# دالة لحفظ السيزون في الملف
-def save_session(session_str):
-    with open(SESSION_DB, "a") as f:
-        f.write(session_str + "\n")
+# دالة تشغيل الحسابات (من الملف أو السيزون)
+async def start_all_accounts():
+    # 1. محاولة تشغيل ملف الجلسة التقليدي إذا وجد
+    if os.path.exists(OLD_SESSION_FILE):
+        try:
+            c = TelegramClient("session", api_id, api_hash)
+            await c.connect()
+            if await c.is_user_authorized():
+                print("✅ تم تشغيل الحساب من ملف session.session")
+                await load_plugins(c)
+                asyncio.create_task(c.run_until_disconnected())
+        except Exception as e: print(f"⚠️ فشل تشغيل ملف الجلسة: {e}")
 
-# دالة لتشغيل الحسابات المحفوظة عند بداية التشغيل
-async def load_saved_sessions():
+    # 2. تشغيل الحسابات من قاعدة بيانات السيزونات النصية
     if os.path.exists(SESSION_DB):
         with open(SESSION_DB, "r") as f:
-            sessions = f.readlines()
-            for s in sessions:
+            for s in f.readlines():
                 s = s.strip()
                 if s:
                     try:
-                        client = TelegramClient(StringSession(s), api_id, api_hash)
-                        await client.connect()
-                        if await client.is_user_authorized():
-                            await load_plugins(client)
-                            asyncio.create_task(client.run_until_disconnected())
-                            print(f"✅ تم إعادة تشغيل حساب محفوظ.")
-                    except Exception as e:
-                        print(f"❌ فشل تشغيل حساب محفوظ: {e}")
+                        c = TelegramClient(StringSession(s), api_id, api_hash)
+                        await c.connect()
+                        if await c.is_user_authorized():
+                            await load_plugins(c)
+                            asyncio.create_task(c.run_until_disconnected())
+                            print("✅ تم تشغيل حساب من database.txt")
+                    except Exception as e: print(f"⚠️ فشل سيزون نصي: {e}")
 
 @bot.on(events.NewMessage(pattern='/start'))
 async def start(event):
     buttons = [
-        [Button.inline("➕ إضافة حساب", data="add_acc")],
-        [Button.inline("🔄 تحديث السورس (GitHub)", data="restart")],
-        [Button.inline("📊 الإحصائيات", data="stats")]
+        [Button.inline("➕ إضافة حساب (رقم)", data="add_acc")],
+        [Button.inline("🔄 تحديث السورس وإعادة تشغيل", data="restart")],
+        [Button.inline("📊 إحصائيات", data="stats")]
     ]
-    await event.respond("☭ **لوحة تحكم نيثرون المطور** ☭", buttons=buttons)
+    await event.respond("☭ **مرحباً بك في لوحة تحكم نيثرون** ☭\n\nالسورس الآن يدعم الحفظ التلقائي للجلسات.", buttons=buttons)
 
 @bot.on(events.CallbackQuery)
 async def callback(event):
     data = event.data.decode('utf-8')
-    chat_id = event.chat_id
-
+    
     if data == "add_acc":
-        async with bot.conversation(chat_id) as conv:
-            await conv.send_message("📱 **أرسل رقم الهاتف مع رمز الدولة (مثال: +964...):**")
-            response = await conv.get_response()
-            phone = response.text.replace(" ", "")
-
-            await conv.send_message("⏳ جاري طلب كود التحقق...")
+        async with bot.conversation(event.chat_id) as conv:
+            await conv.send_message("📱 أرسل الرقم مع رمز الدولة:")
+            p_res = await conv.get_response()
+            phone = p_res.text.replace(" ", "")
+            
+            # نستخدم StringSession لضمان سهولة النقل والحفظ
             client = TelegramClient(StringSession(), api_id, api_hash)
             await client.connect()
-            
             try:
                 await client.send_code_request(phone)
-                await conv.send_message("📥 **أرسل الكود الآن:**")
-                code_res = await conv.get_response()
-                await client.sign_in(phone, code_res.text)
+                await conv.send_message("📥 أرسل الكود:")
+                c_res = await conv.get_response()
+                await client.sign_in(phone, c_res.text)
                 
-                # حفظ الجلسة في الملف فور النجاح
-                session_str = client.session.save()
-                save_session(session_str)
+                # حفظ السيزون فوراً في ملف خارجي للأمان
+                with open(SESSION_DB, "a") as f:
+                    f.write(client.session.save() + "\n")
                 
-                if chat_id not in __main__.active_sessions:
-                    __main__.active_sessions[chat_id] = []
-                __main__.active_sessions[chat_id].append(client)
-                
-                await conv.send_message("✅ **تم الربط وحفظ الجلسة بنجاح! جرب `.فحص` الآن.**")
+                await conv.send_message("✅ تم الربط بنجاح! الحساب الآن محفوظ ولن يطلب كود مرة أخرى.")
                 await load_plugins(client)
                 asyncio.create_task(client.run_until_disconnected())
-                
             except Exception as e:
-                await conv.send_message(f"❌ فشل: {str(e)}")
+                await conv.send_message(f"❌ خطأ: {str(e)}")
 
     elif data == "restart":
-        await event.answer("🔄 جاري سحب التحديثات وإعادة التشغيل...", alert=True)
-        try:
-            # سحب التحديثات من المستودع
-            subprocess.run(["git", "pull", "--force"], check=True)
-            # إعادة تشغيل السكريبت بالكامل
-            os.execl(sys.executable, sys.executable, *sys.argv)
-        except Exception as e:
-            await event.respond(f"❌ خطأ أثناء التحديث: {e}")
+        await event.answer("🔄 جاري التحديث وإعادة التشغيل...", alert=True)
+        try: subprocess.run(["git", "pull", "--force"], check=True)
+        except: pass
+        os.execl(sys.executable, sys.executable, *sys.argv)
 
-    elif data == "stats":
-        total = sum(len(v) for v in __main__.active_sessions.values())
-        await event.answer(f"📊 الإحصائيات: {total} حساب نشط", alert=True)
-
-print("--- Source Nethron Started ---")
-# تشغيل الحسابات القديمة عند بدء الميكر
+# تشغيل المهام
 loop = asyncio.get_event_loop()
-loop.create_task(load_saved_sessions())
+loop.create_task(start_all_accounts())
+print("🚀 سورس نيثرون قيد التشغيل...")
 bot.run_until_disconnected()
