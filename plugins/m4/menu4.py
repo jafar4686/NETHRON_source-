@@ -1,3 +1,8 @@
+from telethon import events
+import __main__
+
+client = __main__.client
+
 @client.on(events.NewMessage(pattern=r"^\.م4$"))
 async def m4_command(event):
     m4_text = (
