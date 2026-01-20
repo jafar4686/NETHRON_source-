@@ -2,25 +2,22 @@ import __main__
 import asyncio
 import yt_dlp
 from telethon import events
-from ntgcalls import NTgCalls
-from ntgcalls import InputMode, StreamMode
-from telethon.tl.functions.channels import GetFullChannelRequest
-from telethon.tl.functions.phone import JoinGroupCallRequest
-from telethon.tl.types import InputPeerChannel
+from ntgcalls import NTgCalls, InputMode  # ✅ استيراد صحيح
+# ملاحظة: StreamMode موجود في ntgcalls
 
 # استدعاء الحساب الرئيسي
 client = __main__.client
 # محرك الصوت
 ntg = NTgCalls(client)
 
-# قاموس لتخزين طابور التشغيل لكل شات
-queues = {}
+# إذا StreamMode ما يشتغل، استخدم هذا:
+from ntgcalls import MediaStream
 
 @client.on(events.NewMessage(pattern=r"^\.ميوزك$"))
 async def start_music_engine(event):
     if not event.out: 
         return
-    await event.edit("✅ **نظام الميوزك (NTgCalls) جاهز!**\n🎶 استخدم `.تشغيل` + رابط")
+    await event.edit("✅ **نظام الميوزك (NTgCalls) جاهز!**")
 
 @client.on(events.NewMessage(pattern=r"^\.تشغيل (.+)$"))
 async def play_music(event):
@@ -30,74 +27,38 @@ async def play_music(event):
     url = event.pattern_match.group(1).strip()
     chat_id = event.chat_id
     
-    await event.edit(f"🎵 **جاري التحميل...**\n`{url}`")
+    await event.edit(f"🎵 **جاري التحميل...**")
     
     try:
-        # تحميل معلومات الصوت من اليوتيوب
+        # تحميل معلومات الصوت
         ydl_opts = {
             'format': 'bestaudio/best',
             'quiet': True,
-            'no_warnings': True,
-            'extractaudio': True,
-            'audioformat': 'mp3',
-            'noplaylist': True,
         }
         
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
-            title = info.get('title', 'مقطع صوت')
-            duration = info.get('duration', 0)
             audio_url = info.get('url')
-            
-            if not audio_url:
-                # إذا مافيش رابط مباشر، نستخدم extractor
-                formats = info.get('formats', [])
-                for f in formats:
-                    if f.get('acodec') != 'none' and f.get('vcodec') == 'none':
-                        audio_url = f.get('url')
-                        break
+            title = info.get('title', 'مقطع صوت')
         
         if not audio_url:
             await event.edit("❌ **ماقدرش أحصل على رابط الصوت**")
             return
         
-        # التأكد من وجود البوت في المكالمة
-        try:
-            # جلب معلومات المجموعة
-            full_chat = await client(GetFullChannelRequest(event.chat_id))
-            if hasattr(full_chat.full_chat, 'call'):
-                call = full_chat.full_chat.call
-                if call:
-                    # الانضمام للمكالمة
-                    await client(JoinGroupCallRequest(
-                        call=call,
-                        params='',
-                        muted=False,
-                        video_stopped=False
-                    ))
-        except Exception as e:
-            print(f"انضمام للمكالمة: {e}")
-            # إذا مافي مكالمة، البوت يبدأها
-        
         # تشغيل الصوت
+        # الطريقة المبسطة:
         await ntg.join_group_call(
             chat_id,
-            input_mode=InputMode.Stream(audio_url),
-            stream_mode=StreamMode().shell_stream(
-                'ffmpeg -re -i pipe:0 -f s16le -ac 2 -ar 48000 -acodec pcm_s16le pipe:1'
+            media_stream=MediaStream(
+                audio_path=audio_url,
+                video_path=None
             )
         )
         
-        # إضافة للطابور إذا مافي طابور
-        if chat_id not in queues:
-            queues[chat_id] = []
+        await event.edit(f"▶️ **جاري التشغيل:**\n**{title}**")
         
-        await event.edit(f"▶️ **جاري التشغيل:**\n**{title}**\n⏱️ المدة: {duration//60}:{duration%60:02d}")
-        
-    except yt_dlp.utils.DownloadError as e:
-        await event.edit(f"❌ **خطأ في التحميل:**\n`{str(e)[:100]}`")
     except Exception as e:
-        await event.edit(f"❌ **حدث خطأ:**\n`{str(e)[:100]}`")
+        await event.edit(f"❌ **خطأ:**\n`{str(e)[:100]}`")
         print(f"خطأ: {e}")
 
 @client.on(events.NewMessage(pattern=r"^\.ايقاف$"))
@@ -109,10 +70,9 @@ async def stop_music(event):
     
     try:
         await ntg.leave_group_call(chat_id)
-        
-        # مسح الطابور
-        if chat_id in queues:
-            del queues[chat_id]
+        await event.edit("🛑 **تم إيقاف الموسيقى**")
+    except Exception as e:
+        await event.edit(f"⚠️ **خطأ:**\n`{e}`")            del queues[chat_id]
         
         await event.edit("🛑 **تم إيقاف الموسيقى ومسح الطابور**")
     except Exception as e:
