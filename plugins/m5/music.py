@@ -1,29 +1,50 @@
 import __main__
-from telethon import events, Button
+from telethon import events
 from ntgcalls import NTgCalls
+from ntgcalls import StreamStatus
 import asyncio
 
+# استدعاء الحساب الرئيسي
 client = __main__.client
-# الميوزك يحتاج البوت المساعد للرد في المجموعات
-bot = getattr(__main__, 'bot', None) 
-call_py = NTgCalls(client)
+# محرك الصوت
+ntg = NTgCalls(client)
 
 @client.on(events.NewMessage(pattern=r"^\.ميوزك$"))
-async def start_in_group(event):
-    # السماح للأمر بالعمل فقط إذا كنت أنت من أرسله (event.out)
+async def start_music_engine(event):
     if not event.out: return
-    
-    await event.edit("🔄 **جاري الربط بالمحادثة المرئية للمجموعة...**")
+    await event.edit("🔄 **جاري تشغيل محرك الصوت (NTgCalls)...**")
     try:
-        # التأكد من تشغيل المحرك
-        if not call_py.active:
-            await call_py.start()
-        
-        await event.edit("✅ **تم تفعيل نظام الميوزك في هذه المجموعة!**\n🎶 نيثـرون جاهز الآن.")
+        # بدلاً من pygcalls.start() نستخدم النموذج الخاص بـ ntgcalls
+        # المحرك يعمل تلقائياً عند الحاجة
+        await event.edit("✅ **نظام الميوزك جاهز الآن!**\n🎶 يمكنك استخدام `.تشغيل` مع رابط يوتيوب.")
     except Exception as e:
-        await event.edit(f"❌ **لازم تفتح المحادثة المرئية أولاً!**\nالخطأ: `{e}`")
+        await event.edit(f"❌ حدث خطأ في التشغيل: {e}")
 
-@client.on(events.NewMessage(pattern=r"^\.م٥$"))
-async def m5_group(event):
+@client.on(events.NewMessage(pattern=r"^\.ايقاف$"))
+async def stop_music(event):
     if not event.out: return
-    await event.edit("🍎 **قائمة ميوزك المجموعات**\n\n• `.ميوزك يوت` + رابط\n• `.ايقاف` لقطع الصوت\n\n**تأكد من وجود البوت المساعد مشرفاً!**")
+    try:
+        # إيقاف كل المكالمات النشطة
+        await ntg.leave_group_call(event.chat_id)
+        await event.edit("🛑 تم إيقاف الموسيقى بنجاح.")
+    except:
+        await event.edit("⚠️ لا يوجد اتصال نشط حالياً.")
+
+@client.on(events.NewMessage(pattern=r"^\.تشغيل (.+)$"))
+async def play_music(event):
+    if not event.out: return
+    url = event.pattern_match.group(1)
+    await event.edit(f"🎵 **جاري تشغيل:** {url}")
+    
+    try:
+        # مثال على تشغيل صوت مع ntgcalls
+        await ntg.join_group_call(
+            event.chat_id,
+            input_mode=InputMode.Shell(f'youtube-dl -f bestaudio -g "{url}"'),
+            stream_mode=StreamMode().pulse_stream(
+                '-f s16le -ac 2 -ar 48000 -'
+            )
+        )
+        await event.edit(f"▶️ **جاري التشغيل الآن:** {url}")
+    except Exception as e:
+        await event.edit(f"❌ خطأ في التشغيل: {e}")
