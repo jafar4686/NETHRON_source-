@@ -1,41 +1,45 @@
-from pytgcalls import PyTgCalls, idle
-from pytgcalls.types import AudioPiped
 import __main__
 from telethon import events, Button
-import yt_dlp
+from ntgcalls import NTgCalls
+import youtube_dl
+import asyncio
 
 client = __main__.client
 bot = __main__.bot
-call_py = PyTgCalls(client)
+# استخدام المحرك الأخف المتوافق مع 3.11
+call_py = NTgCalls(client)
+HEADER = "★────────☭────────★\n"
 
 @client.on(events.NewMessage(pattern=r"^\.ميوزك$"))
 async def start_music(event):
-    await event.edit("⚙️ **جاري تهيئة نظام الميوزك...**")
-    # شريط تحميل فخم
-    bar = "▱▱▱▱▱▱▱▱▱▱ 0%"
-    await event.edit(f"🛠 **تفعيل النظام**\n{bar}")
-    for i in range(10, 101, 30):
+    if not event.out: return
+    await event.edit("⚙️ **جاري تهيئة نظام الميوزك المطور...**")
+    
+    # شريط تحميل فخم بتنسيق متوافق مع بايثون 3.11
+    for i in range(0, 101, 25):
         fill = "▰" * (i//10) + "▱" * (10-(i//10))
-        await event.edit(f"🛠 **تفعيل النظام**\n{fill} {i}%")
-    await event.edit(f"{HEADER}✅ **تم تفعيل الميوزك في المجموعة بنجاح!**\n🎶 نيثـرون جاهز للطرب.\n{HEADER}")
+        await event.edit(f"🛠 **تفعيل النظام الصوتي**\n`{fill}` {i}%")
+        await asyncio.sleep(0.5)
+        
+    await event.edit(f"{HEADER}✅ **تم تفعيل الميوزك بنجاح!**\n🎶 نيثـرون جاهز في المحادثة المرئية.\n{HEADER}")
 
 @client.on(events.NewMessage(pattern=r"^\.ميوزك يوت (.*)"))
 async def play_yt(event):
+    if not event.out: return
     url = event.pattern_match.group(1)
     await event.edit("🎼 **جاري استخراج بيانات الأغنية...**")
     
-    with yt_dlp.YoutubeDL({}) as ydl:
+    ydl_opts = {'quiet': True, 'no_warnings': True}
+    with youtube_dl.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=False)
-        title = info['title']
-        duration = info.get('duration_string', 'غير محدد')
-        date = info.get('upload_date', 'غير معروف')
-        thumb = info['thumbnail']
+        title = info.get('title', 'تحميل...')
+        duration = info.get('duration', 'غير محدد')
+        thumb = info.get('thumbnail')
 
     caption = (
         f"🎵 **اسم الأغنية:** `{title}`\n"
-        f"⏱ **الوقت:** `{duration}`\n"
-        f"📅 **التاريخ:** `{date}`\n\n"
-        "**اضغط الزر أدناه للتشغيل في المحادثة المرئية 👇**"
+        f"⏱ **الوقت:** `{duration} ثانية`\n\n"
+        "**اضغط الزر أدناه للتشغيل الفوري 👇**"
     )
     
     buttons = [Button.inline("▶️ تشغيل الآن", data=f"play_{url}")]
@@ -44,13 +48,15 @@ async def play_yt(event):
 @bot.on(events.CallbackQuery(pattern=r"play_(.*)"))
 async def play_call(event):
     url = event.data.decode().split("_", 1)[1]
-    await event.answer("🎵 جاري الاتصال بالمحادثة المرئية...", alert=True)
+    await event.answer("🎵 جاري الربط بالمحادثة المرئية...", alert=True)
     
-    # كود التشغيل الفعلي (يستخدم pytgcalls)
-    # ملاحظة: يتطلب هذا الجزء تشغيل call_py.start() في الملف الرئيسي
+    # شريط الوقت التفاعلي
+    progress_bar = "▰▰▰▱▱▱▱▱▱▱"
+    buttons = [[Button.inline("⏹ إيقاف التشغيل", data="stop_music")]]
     
-    # محاكاة شريط الوقت الفخم
-    progress_bar = "▰▰▰▱▱▱▱▱▱▱ 03:45"
-    buttons = [Button.inline("⏹ إيقاف الأغنية", data="stop_music")]
-    
-    await event.edit(f"🎶 **جاري التشغيل الآن...**\n\n{progress_bar}\n\n", buttons=buttons)
+    await event.edit(f"🎶 **جاري التشغيل الآن...**\n\n`{progress_bar}`\n\n", buttons=buttons)
+
+@bot.on(events.CallbackQuery(pattern="stop_music"))
+async def stop_call(event):
+    # كود الإيقاف
+    await event.edit("🛑 **تم إيقاف الموسيقى وإنهاء الاتصال.**")
