@@ -3,6 +3,7 @@ from telethon import events
 import yt_dlp
 import os
 import time
+import random
 
 # الوصول للكلاينت من ملف المين
 client = __main__.client
@@ -10,71 +11,101 @@ client = __main__.client
 @client.on(events.NewMessage(pattern=r"^\.بحث يوت (.*)", outgoing=True))
 async def yut_dl(event):
     url = event.pattern_match.group(1).strip()
-    await event.edit("⏳ **جاري سحب الفيديو والوصف...**")
+    await event.edit("⏳ **جاري سحب الفيديو...**")
     
-    # اسم ملف مؤقت مع timestamp لتجنب التعارض
+    # اسم ملف مؤقت
     timestamp = int(time.time())
-    v_file = f"temp_{event.id}_{timestamp}.mp4"
+    v_file = f"temp_yt_{timestamp}.mp4"
 
-    ydl_opts = {
-        'format': 'best[height<=720]',  # جودة 720p كحد أقصى
-        'outtmpl': v_file,
-        'quiet': True,
-        'no_warnings': True,
-        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'referer': 'https://www.youtube.com/',
-        'origin': 'https://www.youtube.com',
-        # إعدادات مهمة لتجنب 403
-        'http_headers': {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.5',
-            'Accept-Encoding': 'gzip, deflate',
-            'DNT': '1',
-            'Connection': 'keep-alive',
-            'Upgrade-Insecure-Requests': '1',
+    # إعدادات متعددة المحاولات
+    ydl_opts_list = [
+        # محاولة 1: إعدادات بسيطة
+        {
+            'format': 'bestvideo[height<=480]+bestaudio/best[height<=480]',
+            'outtmpl': v_file,
+            'quiet': True,
+            'no_warnings': True,
+            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'socket_timeout': 30,
+            'retries': 5,
         },
-        'extractor_args': {
-            'youtube': {
-                'player_client': ['android', 'web'],  # استخدام عميل مختلف
-            }
+        # محاولة 2: مع ترويسات
+        {
+            'format': 'worst[ext=mp4]',
+            'outtmpl': v_file,
+            'quiet': True,
+            'http_headers': {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': '*/*',
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Referer': 'https://www.youtube.com/',
+                'Origin': 'https://www.youtube.com',
+            },
         },
-        'sleep_interval_requests': 2,  # تقليل الضغط على السيرفر
-    }
+        # محاولة 3: استخدام extractor مختلف
+        {
+            'format': 'best',
+            'outtmpl': v_file,
+            'quiet': True,
+            'extractor_args': {
+                'youtube': {
+                    'player_client': ['android'],
+                    'player_skip': ['webpage'],
+                }
+            },
+        }
+    ]
 
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            # 1. جلب المعلومات والوصف
-            info = ydl.extract_info(url, download=True)
-            title = info.get('title', 'لا يوجد عنوان')
-            description = info.get('description', 'لا يوجد وصف')[:300]
+    success = False
+    last_error = ""
+    
+    for attempt, ydl_opts in enumerate(ydl_opts_list, 1):
+        try:
+            await event.edit(f"⏳ **المحاولة {attempt}/3...**")
+            
+            # إضافة تأخير عشوائي
+            time.sleep(random.uniform(1, 3))
+            
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                # محاولة الحصول على معلومات بدون تحميل أولاً
+                info = ydl.extract_info(url, download=False)
+                title = info.get('title', 'لا يوجد عنوان')
+                description = info.get('description', 'لا يوجد وصف')[:300]
+                
+                # الآن تحميل الفيديو
+                await event.edit(f"📥 **جاري التحميل (المحاولة {attempt})...**")
+                ydl.download([url])
+            
+            # التحقق من الملف
+            if os.path.exists(v_file) and os.path.getsize(v_file) > 1024:  # أكبر من 1KB
+                caption = f"🎬 **{title}**\n\n📝 {description}..."
+                
+                await event.edit("🚀 **جاري الرفع...**")
+                await event.client.send_file(
+                    event.chat_id,
+                    v_file,
+                    caption=caption,
+                    supports_streaming=True,
+                    video_note=False
+                )
+                
+                success = True
+                break
+                
+        except Exception as e:
+            last_error = str(e)
+            if os.path.exists(v_file):
+                os.remove(v_file)
+            continue
 
-        # 2. إرسال الفيديو مع الوصف في الكابشن
-        caption = f"🎬 **العنوان:** `{title}`\n\n📝 **الوصف:**\n`{description}...`"
-        
-        await event.edit("🚀 **جاري الرفع...**")
-        
-        # التحقق من حجم الملف قبل الإرسال
-        if os.path.exists(v_file) and os.path.getsize(v_file) > 0:
-            await event.client.send_file(
-                event.chat_id, 
-                v_file, 
-                caption=caption,
-                supports_streaming=True
-            )
-        else:
-            raise Exception("الملف غير موجود أو فارغ")
-        
-        # 3. حذف الملف
-        if os.path.exists(v_file):
-            os.remove(v_file)
-        
+    # التنظيف
+    if os.path.exists(v_file):
+        os.remove(v_file)
+    
+    if success:
         await event.delete()
-
-    except Exception as e:
-        if os.path.exists(v_file): 
-            os.remove(v_file)
-        await event.edit(f"❌ **الخطأ:** {str(e)[:150]}")
+    else:
+        await event.edit(f"❌ **فشل التحميل بعد 3 محاولات**\nآخر خطأ: `{last_error[:100]}`")
 
 @client.on(events.NewMessage(pattern=r"^\.بحث تيك (.*)", outgoing=True))
 async def tik_dl(event):
@@ -82,43 +113,45 @@ async def tik_dl(event):
     await event.edit("⏳ **سحب تيك توك...**")
     
     timestamp = int(time.time())
-    t_file = f"tik_{event.id}_{timestamp}.mp4"
-    
-    # إعدادات خاصة لتيك توك
-    ydl_opts = {
-        'outtmpl': t_file,
-        'quiet': True,
-        'user_agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15',
-        'http_headers': {
-            'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15',
-            'Referer': 'https://www.tiktok.com/',
-        },
-        'extractor_args': {
-            'tiktok': {
-                'app_version': '29.5.0',
-                'manifest_app_version': '29.5.0',
-            }
-        },
-    }
+    t_file = f"tik_{timestamp}.mp4"
     
     try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            desc = info.get('description', 'تيك توك')[:200]
+        # استخدام الأمر المباشر ل yt-dlp
+        cmd = f'yt-dlp -f "best[ext=mp4]" --no-warnings --quiet -o "{t_file}" "{url}"'
+        os.system(cmd)
         
-        if os.path.exists(t_file) and os.path.getsize(t_file) > 0:
+        if os.path.exists(t_file) and os.path.getsize(t_file) > 1024:
             await event.client.send_file(
-                event.chat_id, 
-                t_file, 
-                caption=f"📱 `{desc}`",
+                event.chat_id,
+                t_file,
+                caption="📱 **تيك توك**",
                 supports_streaming=True
             )
             await event.delete()
         else:
-            raise Exception("ملف التيك توك غير موجود أو فارغ")
+            # محاولة بديلة
+            await event.edit("🔄 **جرب طريقة بديلة...**")
+            alt_cmd = f'yt-dlp -f mp4 -o "{t_file}" "{url}"'
+            os.system(alt_cmd)
             
+            if os.path.exists(t_file):
+                await event.client.send_file(event.chat_id, t_file)
+                await event.delete()
+            else:
+                await event.edit("❌ **فشل تحميل تيك توك**")
+                
     except Exception as e:
-        await event.edit(f"❌ **خطأ تيك توك:** {str(e)[:100]}")
+        await event.edit(f"❌ **خطأ:** {str(e)[:100]}")
     finally:
-        if os.path.exists(t_file): 
+        if os.path.exists(t_file):
             os.remove(t_file)
+
+@client.on(events.NewMessage(pattern=r"^\.تحديث$", outgoing=True))
+async def update_ytdlp(event):
+    """تحديث yt-dlp"""
+    await event.edit("🔄 **جاري تحديث yt-dlp...**")
+    try:
+        os.system("pip install --upgrade yt-dlp")
+        await event.edit("✅ **تم التحديث بنجاح!**")
+    except Exception as e:
+        await event.edit(f"❌ **فشل التحديث:** {str(e)}")
