@@ -4,16 +4,16 @@ import requests
 import re
 import os
 
-# الوصول للكلاينت من الملف الرئيسي لنيثرون
+# الوصول للكلاينت من ملف المين
 client = __main__.client
 
 @client.on(events.NewMessage(pattern=r"^\.بحث يوت (.*)", outgoing=True))
 async def yut_dl(event):
     url = event.pattern_match.group(1).strip()
-    await event.edit("⏳ **جاري جلب وصف وتحميل فيديو يوتيوب...**")
+    await event.edit("⏳ **جاري جلب الوصف والرفع المباشر...**")
     
-    # استخدام API خارجي لجلب الرابط المباشر والوصف (كما في كودك القديم)
-    # ملاحظة: يوتيوب يحتاج معالجة خاصة لذا سنستخدم استخراج المعلومات فقط
+    # استخدام API خارجي لجلب رابط فيديو يوتيوب المباشر لتجنب حظر السيرفر
+    # تم تبسيط هذا الجزء ليعمل بدون حفظ ملفات نهائياً
     import yt_dlp
     ydl_opts = {'format': 'best', 'quiet': True, 'no_warnings': True}
     
@@ -25,38 +25,38 @@ async def yut_dl(event):
             description = info.get('description', 'لا يوجد وصف')[:300]
 
         if video_url:
-            await event.edit("🚀 **جاري الرفع المباشر للفيديو...**")
             caption = f"🎬 **العنوان:** `{title}`\n\n📝 **الوصف:**\n`{description}...`"
-            # الإرسال المباشر بدون حفظ ملف
+            # إرسال الرابط المباشر (Stream) كملف فيديو
             await event.client.send_file(event.chat_id, video_url, caption=caption)
             await event.delete()
         else:
-            await event.edit("❌ فشل الحصول على رابط الفيديو المباشر")
+            await event.edit("❌ فشل الحصول على رابط الفيديو")
             
     except Exception as e:
-        await event.edit(f"❌ **حدث خطأ:**\n`{str(e)[:150]}`")
+        await event.edit(f"❌ **خطأ يوتيوب:**\n`{str(e)[:150]}`")
 
 @client.on(events.NewMessage(pattern=r"^\.بحث تيك (.*)", outgoing=True))
 async def tik_dl(event):
     video_url = event.pattern_match.group(1).strip()
-    await event.edit("⏳ **جاري جلب وصف وتحميل تيك توك...**")
+    await event.edit("⏳ **جاري جلب وصف فيديو تيك توك...**")
     
     try:
-        # استخلاص منطق التحميل من ملفك القديم (bot4.py)
+        # استخلاص منطق التحميل باستخدام TikWM API من كودك القديم
         api_url = f"https://www.tikwm.com/api/?url={video_url}"
         response = requests.get(api_url, timeout=30)
         data = response.json()
         
         if data.get('code') == 0:
             video_data = data.get('data', {})
-            play_url = video_data.get('play') # رابط الفيديو المباشر
+            play_url = video_data.get('play')
             title = video_data.get('title', 'فيديو تيك توك')
             
             if play_url:
-                # إضافة نطاق الـ API إذا كان الرابط ناقصاً كما في الكود القديم
+                # تصحيح الرابط إذا كان ناقصاً
                 if play_url.startswith('//'): play_url = 'https:' + play_url
                 
-                await event.edit("🚀 **جاري الرفع المباشر...**")
+                await event.edit("🚀 **رفع تيك توك مباشر...**")
+                # إرسال الفيديو مباشرة من الرابط دون تخزينه
                 await event.client.send_file(event.chat_id, play_url, caption=f"📱 **العنوان:** `{title}`")
                 await event.delete()
             else:
