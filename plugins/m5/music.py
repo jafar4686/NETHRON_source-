@@ -1,58 +1,64 @@
 import __main__
 from telethon import events
 import yt_dlp
+import io
 import os
 
+# الوصول للكلاينت
 client = __main__.client
 
-@client.on(events.NewMessage(pattern=r"^\.بحث يوت (.*)"))
+@client.on(events.NewMessage(pattern=r"^\.م5$", outgoing=True))
+async def m5_menu(event):
+    m5_text = (
+        "★────────☭────────★\n"
+        "   ☭ • 𝑆𝑂𝑈𝑅𝐶𝐸 𝑁𝐸𝑇𝐻𝑅𝑂𝑁 • ☭\n"
+        "         • تـحـمـيـل مـبـاشـر •\n"
+        "★────────☭────────★\n\n"
+        "• `.بحث يوت` (رابط)\n"
+        "• `.بحث تيك` (رابط)\n\n"
+        "⚙️ **التحميل يتم بالذاكرة بدون حفظ ملفات.**"
+    )
+    await event.edit(m5_text)
+
+@client.on(events.NewMessage(pattern=r"^\.بحث يوت (.*)", outgoing=True))
 async def youtube_download(event):
     url = event.pattern_match.group(1).strip()
-    await event.edit("⏳ **جاري جلب البيانات من يوتيوب...**")
+    await event.edit("⏳ **جاري السحب للذاكرة...**")
     
-    if not os.path.exists("downloads"): os.makedirs("downloads")
-
+    # إعدادات التحميل للبث المباشر (Streaming to memory)
     ydl_opts = {
-        'format': 'best',
-        'outtmpl': 'downloads/%(title)s.%(ext)s',
+        'format': 'best[ext=mp4]/best', 
         'quiet': True,
-        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-        'nocheckcertificate': True,
+        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36'
     }
-    
+
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            path = ydl.prepare_filename(info)
+            info = ydl.extract_info(url, download=False)
+            video_url = info['url']
             title = info.get('title', 'Video')
 
-        await event.edit("✅ **جاري رفع الملفات...**")
-        await event.client.send_file(event.chat_id, path, caption=f"🎬 **يوتيوب:** `{title}`")
-        await event.client.send_file(event.chat_id, path, voice_note=True)
+        await event.edit("🚀 **جاري الرفع المباشر...**")
         
-        if os.path.exists(path): os.remove(path)
+        # إرسال الرابط كملف (تليجرام يسحب من الرابط مباشرة في بعض الحالات) 
+        # أو رفعه كـ Stream
+        await event.client.send_file(event.chat_id, video_url, caption=f"🎬 `{title}`")
         await event.delete()
-    except Exception as e:
-        await event.edit(f"❌ **خطأ يوتيوب:**\n`{str(e)}`")
 
-@client.on(events.NewMessage(pattern=r"^\.بحث تيك (.*)"))
+    except Exception as e:
+        await event.edit(f"❌ **خطأ:** `{str(e)[:100]}`")
+
+@client.on(events.NewMessage(pattern=r"^\.بحث تيك (.*)", outgoing=True))
 async def tiktok_download(event):
     url = event.pattern_match.group(1).strip()
-    await event.edit("⏳ **جاري تحميل تيك توك...**")
-    
-    path_tik = "downloads/tik_nethron.mp4"
-    ydl_opts = {
-        'outtmpl': path_tik, 
-        'quiet': True,
-        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-    }
+    await event.edit("⏳ **سحب تيك توك...**")
     
     try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([url])
+        with yt_dlp.YoutubeDL({'quiet': True}) as ydl:
+            info = ydl.extract_info(url, download=False)
+            video_url = info['url']
         
-        await event.client.send_file(event.chat_id, path_tik, caption="📱 **تيك توك نيثرون**")
-        if os.path.exists(path_tik): os.remove(path_tik)
+        await event.client.send_file(event.chat_id, video_url, caption="📱 **تيك توك مباشر**")
         await event.delete()
     except Exception as e:
         await event.edit(f"❌ **خطأ تيك توك:** `{e}`")
