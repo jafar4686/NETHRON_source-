@@ -1,66 +1,88 @@
-import asyncio
+import os
 import yt_dlp
 from telethon import events
-from ntgcalls import NTgCalls
+from resources.strings import * # استيراد الكليشات إذا كانت موجودة
 
-# محاولة الحصول على العميل (Client) من السورس الرئيسي
-try:
-    import __main__
-    client = __main__.client
-except:
-    client = None
+# كليشة القائمة م5
+KLESHA_M5 = """
+⚡️ **قـسـم الـتـحـمـيـل - نـيـثـرون** ⚡️
+──────────────────
+🔹 `.بحث يوت` + رابط : تحميل فيديو وصوت من يوتيوب
+🔹 `.بحث تيك` + رابط : تحميل من تيك توك بدون حقوق
+──────────────────
+⚙️ **أرسل الرابط مع الأمر للبدء.**
+"""
 
-# ✅ الطريقة الصحيحة للإصدار 2.0.7: لا نمرر client هنا
-ntg = NTgCalls()
+# 1. أمر تحديث القائمة .م5
+@bot.on(events.NewMessage(pattern=r'\.م5', outgoing=True))
+async def m5_menu(event):
+    await event.edit(KLESHA_M5)
 
-@client.on(events.NewMessage(pattern=r'^\.ميوزك$'))
-async def music_test(event):
-    if not event.out: return
-    await event.edit('🎵 **نظام الميوزك (NTgCalls 2.0.7) جاهز الآن!**\nاستخدم `.تشغيل` + رابط.')
-
-@client.on(events.NewMessage(pattern=r'^\.تشغيل (.+)$'))
-async def play_music(event):
-    if not event.out: return
-    url = event.pattern_match.group(1).strip()
-    chat_id = event.chat_id
+# 2. تحميل يوتيوب (فيديو + صوت + معلومات)
+@bot.on(events.NewMessage(pattern=r'\.بحث يوت (.*)', outgoing=True))
+async def yut_dl(event):
+    url = event.pattern_match.group(1)
+    await event.edit("⏳ **جاري جلب معلومات الفيديو...**")
     
-    await event.edit('⏳ **جاري استخراج رابط الصوت...**')
+    ydl_opts = {
+        'format': 'best',
+        'outtmpl': 'downloads/%(title)s.%(ext)s',
+        'quiet': True
+    }
     
     try:
-        # استخراج الرابط المباشر
-        ydl_opts = {'format': 'bestaudio', 'quiet': True, 'no_warnings': True}
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-            audio_url = info['url']
-            title = info.get('title', 'أغنية')
+            info = ydl.extract_info(url, download=True)
+            filename = ydl.prepare_filename(info)
+            title = info.get('title', 'Nethron Video')
+            desc = info.get('description', 'لا يوجد وصف')[:200]
+            duration = info.get('duration', 0)
 
-        # ✅ في الإصدار 2.x نستخدم الانضمام والتشغيل هكذا:
-        # ملاحظة: المكتبة تتعرف على الـ client تلقائياً من خلال الجلسة النشطة في السيرفر
-        await ntg.join_group_call(
-            chat_id,
-            path=audio_url,  # نستخدم path بدلاً من stream_audio في بعض تحديثات 2.x
+        # إرسال الفيديو
+        await event.client.send_file(
+            event.chat_id, 
+            filename, 
+            caption=f"🎬 **تـم الـتـحـمـيـل**\n📌 `{title}`\n⏱ {duration}ث\n📝 {desc}.."
         )
         
-        await event.edit(f'✅ **بدأ التشغيل الآن:**\n`{title}`')
+        # إرسال الصوت (بصمة)
+        await event.client.send_file(
+            event.chat_id, 
+            filename, 
+            caption=f"🎼 صوت: {title}",
+            voice_note=True
+        )
+        
+        if os.path.exists(filename):
+            os.remove(filename)
+        await event.delete()
+            
     except Exception as e:
-        await event.edit(f'❌ خطأ أثناء التشغيل: `{str(e)}`')
+        await event.edit(f"❌ **خطأ:** `{str(e)}`")
 
-@client.on(events.NewMessage(pattern=r'^\.ايقاف$'))
-async def stop_music(event):
-    if not event.out: return
+# 3. تحميل تيك توك
+@bot.on(events.NewMessage(pattern=r'\.بحث تيك (.*)', outgoing=True))
+async def tik_dl(event):
+    url = event.pattern_match.group(1)
+    await event.edit("⏳ **جاري تحميل فيديو تيك توك...**")
+    
+    ydl_opts = {
+        'outtmpl': 'downloads/tiktok.mp4',
+        'quiet': True
+    }
+    
     try:
-        await ntg.leave_group_call(event.chat_id)
-        await event.edit('⏹️ **تم إيقاف التشغيل ومغادرة المكالمة.**')
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            uploader = info.get('uploader', 'TikTok User')
+            
+        await event.client.send_file(
+            event.chat_id, 
+            'downloads/tiktok.mp4', 
+            caption=f"📱 **تـيـك تـوك**\n👤 المصمم: `{uploader}`"
+        )
+        if os.path.exists('downloads/tiktok.mp4'):
+            os.remove('downloads/tiktok.mp4')
+        await event.delete()
     except Exception as e:
-        await event.edit(f'⚠️ خطأ في الإيقاف: `{e}`')
-
-# ✅ تشغيل المحرك عند بدء البوت
-async def start_engine():
-    try:
-        await ntg.start()
-        print("✅ NTgCalls Engine Started!")
-    except Exception as e:
-        print(f"❌ Engine Error: {e}")
-
-if client:
-    client.loop.create_task(start_engine())
+        await event.edit(f"❌ **فشل:** `{str(e)}`")
