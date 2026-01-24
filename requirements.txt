@@ -3,3 +3,4 @@ requests
 asyncio
 pytgcalls
 yt-dlp
+resources
