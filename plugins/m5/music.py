@@ -7,8 +7,8 @@ client = __main__.client
 # قائمة ببوتات تحميل قوية (تقدر تغيرها)
 # بوت يوتيوب: @utubebot أو @YtbDownBot
 # بوت تيك توك: @TikTokDownloaderBot
-YT_BOT = "@utubebot"
-TIK_BOT = "@ttsavebot"
+YT_BOT = "@C_5BOT"
+TIK_BOT = "@VAFBoT"
 
 @client.on(events.NewMessage(outgoing=True))
 async def forward_to_external(event):
