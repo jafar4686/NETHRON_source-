@@ -1,13 +1,13 @@
 import __main__
 from telethon import events
+import yt_dlp
 import requests
-import re
 import os
+import re
 
 # الوصول للكلاينت من سورس نيثرون
 client = __main__.client
 
-# دالة ذكية لسحب الرابط
 def get_url(text):
     urls = re.findall(r'(https?://\S+)', text)
     for url in urls:
@@ -21,33 +21,46 @@ async def auto_dl(event):
     url = get_url(event.text)
     if not url: return
 
-    # --- قسم يوتيوب (حل مشكلة 403 عبر API خارجي) ---
+    # --- قسم يوتيوب (إعدادات كسر الحظر بالسيرفر الجديد) ---
     if "youtube" in url or "youtu.be" in url:
-        await event.edit("⏳ **يتـم السحب عبر منفذ خارجي (تخطى 403)...**")
+        await event.edit("⏳ **جاري جلب الفيديو من يوتيوب...**")
+        v_file = f"y_{event.id}.mp4"
+        
+        ydl_opts = {
+            'format': 'best',
+            'outtmpl': v_file,
+            'quiet': True,
+            'no_warnings': True,
+            # إعدادات قوية لتبدو كأنك متصفح ايفون (تكسر الـ 403)
+            'user_agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.5 Mobile/15E148 Safari/604.1',
+            'referer': 'https://www.youtube.com/',
+            'nocheckcertificate': True,
+        }
+        
         try:
-            # استخدام API خارجي (يحل محل السيرفر المحظور)
-            api_url = f"https://api.cobalt.tools/api/json"
-            headers = {"Accept": "application/json", "Content-Type": "application/json"}
-            payload = {"url": url, "vQuality": "720"}
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=True)
+                title = info.get('title', 'فيديو يوتيوب')
+                # جلب الوصف (أول 150 حرف)
+                desc = info.get('description', '')[:150]
             
-            response = requests.post(api_url, json=payload, headers=headers)
-            data = response.json()
+            await event.edit("🚀 **جاري الرفع...**")
+            await event.client.send_file(
+                event.chat_id, 
+                v_file, 
+                caption=f"🎬 **العنوان:** `{title}`\n\n📝 **الوصف:**\n`{desc}...`"
+            )
+            if os.path.exists(v_file): os.remove(v_file)
+            await event.delete()
             
-            if data.get('url'):
-                video_url = data['url']
-                # الرفع المباشر من رابط الـ API
-                await event.client.send_file(event.chat_id, video_url, caption="🎬 **تم التحميل بنجاح عبر المنفذ البديل**")
-                await event.delete()
-            else:
-                await event.edit("❌ المنفذ البديل مشغول، جرب لاحقاً.")
         except Exception as e:
-            await event.edit(f"❌ خطأ يوتيوب: السيرفر محظور والمنفذ لا يستجيب.")
+            if os.path.exists(v_file): os.remove(v_file)
+            await event.edit(f"❌ **فشل التحميل:**\n`{str(e)[:100]}`")
 
-    # --- قسم تيك توك (نفس منطق ملفك bot4.py) ---
+    # --- قسم تيك توك (منطق ملفك القديم bot4.py) ---
     elif "tiktok.com" in url:
-        await event.edit("⏳ **جاري سحب تيك توك (بدون حقوق)...**")
+        await event.edit("⏳ **جاري جلب تيك توك...**")
         try:
-            # منطق الـ API اللي دزيته بملفك القديم
             api_tik = f"https://www.tikwm.com/api/?url={url}"
             data = requests.get(api_tik).json()
             if data.get('code') == 0:
@@ -58,11 +71,11 @@ async def auto_dl(event):
                 await event.client.send_file(event.chat_id, v_url, caption=f"📱 `{title}`")
                 await event.delete()
             else:
-                await event.edit("❌ فشل سحب تيك توك.")
+                await event.edit("❌ رابط تيك توك غير صالح.")
         except Exception:
-            await event.edit("❌ خطأ في الاتصال بالمحرك.")
+            await event.edit("❌ خطأ في محرك تيك توك.")
 
-# للتأكد من عمل الملف
+# أمر الفحص
 @client.on(events.NewMessage(pattern=r"^\.فحص$", outgoing=True))
 async def check(event):
-    await event.edit("✅ **المحرك يعمل ويتخطى الحظر (403)!**")
+    await event.edit("✅ **المحرك شغال وبانتظار الروابط!**")
