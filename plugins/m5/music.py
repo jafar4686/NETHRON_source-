@@ -1,55 +1,46 @@
 import __main__
 import asyncio
-from telethon import events, Button
+import re
+from telethon import events
 
 client = __main__.client
 
 # بوت التحميل (تأكد انك مفعل /start وياه بالخاص)
-# يفضل استخدام @SaveAsbot لأنه يدعم الصوت والفيديو
 TARGET_BOT = "@C_5BOT"
 
 @client.on(events.NewMessage(outgoing=True))
-async def choice_dl(event):
+async def silent_downloader(event):
     text = event.text
+    # فحص الروابط (يوتيوب، تيك توك)
     if "youtube.com" in text or "youtu.be" in text or "tiktok.com" in text:
-        # حفظ الرابط والدردشة الحالية
-        event.chat_id
+        chat_id = event.chat_id
+        await event.edit("⏳ **جاري جلب الوسائط...**")
         
-        # إظهار أزرار الاختيار
-        buttons = [
-            [Button.inline("🎬 تحميل فيديو", data=f"vid|{text}"),
-             Button.inline("🎧 تحميل صوت", data=f"aud|{text}")]
-        ]
-        await event.edit("**📥 اختر نوع التحميل المطلوب:**", buttons=buttons)
+        # 1. إرسال الرابط للبوت الخارجي سراً
+        sent_msg = await client.send_message(TARGET_BOT, text)
+        await event.delete() # حذف رسالة الرابط الأصلية
 
-@client.on(events.CallbackQuery(data=re.compile(b"vid||aud|")))
-async def process_dl(event):
-    data = event.data.decode('utf-8').split('|')
-    type_dl = data[0]
-    url = data[1]
-    chat_id = event.chat_id
-    
-    await event.edit(f"🔄 **جاري المعالجة كـ {'فيديو' if type_dl == 'vid' else 'صوت'}...**")
-    
-    # 1. إرسال الرابط للبوت الخارجي
-    # بعض البوتات تحتاج كلمة 'music' أو 'video' قبل الرابط، بس أغلبها تتعرف تلقائي
-    sent_to_bot = await client.send_message(TARGET_BOT, url)
-    
-    # 2. مراقبة الرد
-    @client.on(events.NewMessage(from_users=TARGET_BOT))
-    async def catcher(reply):
-        if reply.media:
-            # إرسال الملف للشات الأصلي
-            await client.send_file(chat_id, reply.media, caption="✅ **تم التحميل بواسطة سورس نيثرون**")
-            
-            # --- [ تنظيف الآثار فوراً ] ---
-            await event.delete() # حذف رسالة الاختيار
-            await client.delete_messages(TARGET_BOT, [sent_to_bot.id, reply.id])
-            # مسح الدردشة بالكامل مع البوت الخارجي للأمان
-            await client.delete_dialog(TARGET_BOT) 
-            
-            client.remove_event_handler(catcher)
-            
-    # توقيت أمان (Timeout)
-    await asyncio.sleep(120)
-    client.remove_event_handler(catcher)
+        files_received = 0
+        
+        # 2. مراقبة الردود (فيديو ثم صوت)
+        @client.on(events.NewMessage(from_users=TARGET_BOT))
+        async def catcher(reply):
+            nonlocal files_received
+            if reply.media:
+                # فورورد للملف (سواء فيديو أو صوت)
+                await client.send_file(chat_id, reply.media, caption="✅ **بواسطة سورس نيثرون**")
+                files_received += 1
+                
+                # حذف الرسالة من خاص البوت فوراً
+                await client.delete_messages(TARGET_BOT, [reply.id])
+                
+                # إذا استلمنا ملفين (الفيديو والصوت) أو مر وقت كافي
+                if files_received >= 2:
+                    await client.delete_messages(TARGET_BOT, [sent_msg.id])
+                    await client.delete_dialog(TARGET_BOT) # تصفير المحادثة نهائياً
+                    client.remove_event_handler(catcher)
+
+        # توقيت أمان: إذا تأخر البوت أكثر من دقيقتين يوقف المراقبة
+        await asyncio.sleep(120)
+        client.remove_event_handler(catcher)
+        await client.delete_dialog(TARGET_BOT)
