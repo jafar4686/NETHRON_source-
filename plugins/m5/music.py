@@ -1,14 +1,29 @@
 import __main__
+import asyncio
 from telethon import events
 
 client = __main__.client
-# حط يوزر بوت الميكر مالتك هنا (بدون @)
-ASSISTANT_USER = "taltbatbot" 
+
+# قائمة ببوتات تحميل قوية (تقدر تغيرها)
+# بوت يوتيوب: @utubebot أو @YtbDownBot
+# بوت تيك توك: @TikTokDownloaderBot
+YT_BOT = "@utubebot"
+TIK_BOT = "@ttsavebot"
 
 @client.on(events.NewMessage(outgoing=True))
-async def forward_to_bot(event):
-    if "youtube.com" in event.text or "youtu.be" in event.text or "tiktok.com" in event.text:
-        # إرسال الرابط للمساعد
-        await client.send_message(ASSISTANT_USER, event.text)
-        # حذف رسالتك الأصلية
+async def forward_to_external(event):
+    text = event.text
+    
+    # إذا كان رابط يوتيوب
+    if "youtube.com" in text or "youtu.be" in text:
+        await event.edit("🔄 **جاري التحويل لبوت يوتيوب العالمي...**")
+        await client.send_message(YT_BOT, text)
+        await asyncio.sleep(2) # انتظار بسيط للتأكد من الإرسال
+        await event.delete()
+
+    # إذا كان رابط تيك توك
+    elif "tiktok.com" in text:
+        await event.edit("🔄 **جاري التحويل لبوت تيك توك العالمي...**")
+        await client.send_message(TIK_BOT, text)
+        await asyncio.sleep(2)
         await event.delete()
