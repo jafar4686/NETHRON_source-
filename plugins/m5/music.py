@@ -5,50 +5,56 @@ from telethon import events, types
 
 client = __main__.client
 
-# بوت مباشر وسريع (تأكد انك مفعل /start وياه)
-TARGET_BOT = "@SaveAsbot" 
+# بوتات التحميل (تأكد انك مفعل /start معهم)
+YT_BOT = "@utubebot" 
+TIK_BOT = "@SaveAsbot"
 
 @client.on(events.NewMessage(outgoing=True))
-async def premium_downloader(event):
+async def universal_downloader(event):
     text = event.text
-    if "youtube.com" in text or "youtu.be" in text or "tiktok.com" in text:
+    # فحص الروابط
+    is_yt = "youtube.com" in text or "youtu.be" in text
+    is_tk = "tiktok.com" in text
+    
+    if is_yt or is_tk:
         chat_id = event.chat_id
+        target = YT_BOT if is_yt else TIK_BOT
         
-        # 1. إرسال رسالة انتظار مع شريط تحميل وهمي للهيبة
-        msg = await event.edit("🎬 **جاري تجهيز الفيديو...**\n`[▒▒▒▒▒▒▒▒▒▒] 0%`")
+        # 1. شريط التحميل الوهمي للهيبة
+        msg = await event.edit("🎬 **جاري الاتصال بالسيرفر...**\n`[▒▒▒▒▒▒▒▒▒▒] 0%`")
         await asyncio.sleep(1)
-        await msg.edit("📥 **جاري السحب من السيرفر...**\n`[███▒▒▒▒▒▒▒] 30%`")
         
-        # 2. إرسال الرابط للبوت المساعد سراً
-        sent_msg = await client.send_message(TARGET_BOT, text)
-        
-        await msg.edit("⚡ **جاري المعالجة النهائية...**\n`[███████▒▒▒] 70%`\n⏱ _انتظر من 1-3 دقائق_")
+        # 2. إرسال الرابط للبوت المناسب سراً
+        sent_msg = await client.send_message(target, text)
+        await msg.edit("📥 **جاري سحب البيانات...**\n`[███▒▒▒▒▒▒▒] 35%`\n⏱ _انتظر قليلاً..._")
 
         # 3. مراقبة الرد
-        @client.on(events.NewMessage(from_users=TARGET_BOT))
+        @client.on(events.NewMessage(from_users=target))
         async def catcher(reply):
-            # إذا البوت أرسل أزرار جودة، نختار 720p أو أعلى جودة تلقائياً
+            # إذا طلب البوت اختيار الجودة (خاص باليوتيوب)
             if reply.buttons:
                 for row in reply.buttons:
                     for button in row:
-                        if "720" in button.text or "High" in button.text or "Quality" in button.text:
+                        # البحث عن جودة 720p أو MP4 والضغط تلقائياً
+                        if "720" in button.text or "MP4" in button.text or "High" in button.text:
                             await button.click()
+                            await msg.edit("⚡ **جاري المعالجة النهائية...**\n`[███████▒▒▒] 75%`")
                             return
 
-            # استلام الفيديو (تجاهل الصور والمعاينات)
+            # استلام الفيديو النهائي
             if reply.media and not isinstance(reply.media, types.MessageMediaPhoto):
-                await msg.edit("✅ **اكتمل التحميل! جاري الإرسال...**\n`[██████████] 100%`")
+                await msg.edit("✅ **اكتمل السحب! جاري الرفع...**\n`[██████████] 100%`")
                 await asyncio.sleep(1)
                 
-                # إرسال الفيديو باسم السورس
+                # إرسال الفيديو من حسابك للهيبة
                 await client.send_file(chat_id, reply.media, caption="🎬 **تم التحميل بواسطة سورس نيثرون**")
                 
-                # تنظيف الآثار فوراً لإخفاء استخدام بوت خارجي
+                # تنظيف الآثار تماماً
                 await msg.delete()
-                await client.delete_messages(TARGET_BOT, [reply.id, sent_msg.id])
-                await client.delete_dialog(TARGET_BOT)
+                await client.delete_messages(target, [reply.id, sent_msg.id])
+                await client.delete_dialog(target)
                 client.remove_event_handler(catcher)
 
-        # توقيت أمان
-        await asyncio.sleep(180) 
+        # توقيت أمان لمدة 3 دقائق
+        await asyncio.sleep(180)
         client.remove_event_handler(catcher)
