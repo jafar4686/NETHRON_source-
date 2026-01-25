@@ -4,61 +4,73 @@ from telethon import events
 
 client = __main__.client
 
-# 1. أنيميشن القمر العملاق (تحول كامل للأطوار)
-@client.on(events.NewMessage(outgoing=True, pattern=r"^\.قمر"))
-async def moon_anim(event):
+# 1. أنيميشن "الوجه الحزين" (يتحرك من الهدوء للبكاء)
+@client.on(events.NewMessage(outgoing=True, pattern=r"^\.حزين"))
+async def sad_anim(event):
     frames = [
-        "🌑", "🌒", "🌓", "🌔", "🌕", "🌖", "🌗", "🌘", "🌑"
+        " ( •_• ) ",
+        " ( •_•)>💧",
+        " ( •_•)💧💧",
+        " ( ╥﹏╥ ) ",
+        "💔 **نـيـثـرون يـتـألـم** 💔"
     ]
-    for _ in range(2):
-        for frame in frames:
-            await event.edit(f"**ـہہـ٨ـہہـ٨ـ {frame} NETHRON {frame} ـہہـ٨ـہہـ٨ـ**")
-            await asyncio.sleep(0.2)
+    for f in frames:
+        await event.edit(f"`{f}`")
+        await asyncio.sleep(0.6)
 
-# 2. أنيميشن "مصفوفة الهكر" (Matrix Falling) - رسم نقاط عمودي
-@client.on(events.NewMessage(outgoing=True, pattern=r"^\.هكر"))
-async def matrix_anim(event):
+# 2. أنيميشن "القطة الكرتونية" (تمشي في الشات)
+@client.on(events.NewMessage(outgoing=True, pattern=r"^\.بزونة"))
+async def cat_anim(event):
     frames = [
-        "░\n░\n░", "▓\n░\n░", "▓\n▓\n░", "▓\n▓\n▓",
-        "💎\n▓\n▓", "░\n💎\n▓", "░\n░\n💎", "✅"
+        "      ✨\n   拟\n ( •ω•)  🐾",
+        "    ✨\n   拟\n (•ω• )  🐾",
+        "  ✨\n 拟\n( •ω•)   🐾",
+        "✨ **نـورت الـبـزونـة** ✨"
     ]
-    for frame in frames:
-        await event.edit(f"**جاري اختراق النظام...**\n`{frame}`")
-        await asyncio.sleep(0.3)
+    for f in frames:
+        await event.edit(f"`{f}`")
+        await asyncio.sleep(0.5)
 
-# 3. أنيميشن "نبض القلب الاحترافي" (ECG Line) - رسم خطي
-@client.on(events.NewMessage(outgoing=True, pattern=r"^\.نبضي"))
-async def heart_line(event):
+# 3. أنيميشن "رسمة أنمي" (البنت الخجولة)
+@client.on(events.NewMessage(outgoing=True, pattern=r"^\.انمي"))
+async def anime_anim(event):
     frames = [
-        "ـہہـ٨ـہہـ٨ـ",
-        "ـہہـ٨ـہہـ٨ـ❤️",
-        "ـہہـ٨ـہہـ٨ـ❤️ـہہـ٨ـ",
-        "❤️ـہہـ٨ـہہـ٨ـ❤️",
-        "⚡ NETHRON ⚡"
+        "  (  -_-)",
+        "  (  -_-)>✨",
+        "  (づ￣ ³￣)づ",
+        "  (◕‿◕✿)",
+        "🌸 **نـيـثـرون لـلأنـمـي** 🌸"
     ]
-    for frame in frames:
-        await event.edit(f"**`{frame}`**")
-        await asyncio.sleep(0.4)
+    for f in frames:
+        await event.edit(f"`{f}`")
+        await asyncio.sleep(0.6)
 
-# 4. أنيميشن "الدوامة" (The Swirl) - حركية دائرية
-@client.on(events.NewMessage(outgoing=True, pattern=r"^\.دوامة"))
-async def swirl_anim(event):
-    frames = ["◜", "◝", "◞", "◟"]
-    for _ in range(5):
-        for frame in frames:
-            await event.edit(f"**{frame} جاري المعالجة {frame}**")
-            await asyncio.sleep(0.2)
-    await event.edit("✅ **اكتمـل العمل**")
-
-# 5. أنيميشن "البرق المدمر" (Lightning Art)
-@client.on(events.NewMessage(outgoing=True, pattern=r"^\.صاعقة"))
-async def thunder_anim(event):
+# 4. أنيميشن "الرجل الراقص" (حركة كاملة)
+@client.on(events.NewMessage(outgoing=True, pattern=r"^\.رقص"))
+async def dance_anim(event):
     frames = [
-        "☁️", 
-        "☁️\n  ⚡", 
-        "☁️\n  ⚡\n   💥", 
-        "✨ NETHRON ✨"
+        "   ヘ(^_^ヘ)",
+        "   (ノ^_^)ノ",
+        "   ＼(^o^ )／",
+        "   (^_^♪)",
+        "🔥 **الـهـيـبـة تـرقـص** 🔥"
     ]
-    for frame in frames:
-        await event.edit(f"**{frame}**")
+    for _ in range(2): # تكرار الرقصة مرتين
+        for f in frames:
+            await event.edit(f"`{f}`")
+            await asyncio.sleep(0.4)
+
+# 5. أنيميشن "الانفجار الضخم" (رسمة انفجار بالنقاط)
+@client.on(events.NewMessage(outgoing=True, pattern=r"^\.بوم"))
+async def bomb_anim(event):
+    frames = [
+        "      💣",
+        "    💥  💣",
+        "  💥  💥  💥",
+        " 💥  NETHRON  💥",
+        "  💥  💥  💥",
+        "      ✨"
+    ]
+    for f in frames:
+        await event.edit(f"`{f}`")
         await asyncio.sleep(0.4)
