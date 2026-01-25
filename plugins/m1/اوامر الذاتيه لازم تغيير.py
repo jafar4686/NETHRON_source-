@@ -1,63 +1,137 @@
 import __main__
-from telethon import events, types
+from telethon import events, types, functions
 import datetime
+import asyncio
 
 client = __main__.client
 
-# مخزن الرسائل في الذاكرة
-if not hasattr(__main__, 'msg_cache'):
-    __main__.msg_cache = {}
+# إعدادات النظام في الذاكرة
+if not hasattr(__main__, 'self_config'):
+    __main__.self_config = {
+        'status': False,
+        'private': False,
+        'groups': False,
+        'storage_id': None,
+        'auto_clean': False,
+        'clean_interval': 60, # ثانية (1 دقيقة)
+        'cache': {}
+    }
 
-self_status = True 
-
-# 1. أوامر التحكم
-@client.on(events.NewMessage(pattern=r"^\.(تفعيل|تعطيل) ذاتيه$"))
-async def toggle_self(event):
-    global self_status
-    self_status = True if "تفعيل" in event.text else False
-    await event.edit(f"✅ **تم {'تفعيل' if self_status else 'تعطيل'} حفظ المحذوفات.**")
-
-@client.on(events.NewMessage(pattern=r"^\.فحص ذاتيه$"))
-async def check_cache(event):
-    cache_count = len(__main__.msg_cache)
-    status = "شغال ✅" if self_status else "معطل ❌"
-    await event.edit(f"🤖 **نظام الذاتية:** {status}\n📦 **الرسائل المراقبة:** {cache_count}")
-
-# 2. مراقبة وتخزين الرسائل الصادرة والواردة
-@client.on(events.NewMessage)
-async def cache_messages(event):
-    if not self_status or not event.is_private:
-        return
-    # تخزين الرسالة باستخدام الـ ID
-    __main__.msg_cache[event.id] = event.message
-    # تنظيف الكاش (أقصى حد 1000 رسالة)
-    if len(__main__.msg_cache) > 1000:
-        __main__.msg_cache.pop(next(iter(__main__.msg_cache)))
-
-# 3. صيد الحذف باستخدام الـ Raw Update
-@client.on(events.Raw(types.UpdateDeleteMessages))
-async def handler(event):
-    if not self_status:
-        return
+# --- دالة إنشاء قناة التخزين ---
+async def get_storage(event):
+    if __main__.self_config['storage_id']:
+        return __main__.self_config['storage_id']
     
+    # البحث عن قناة موجودة
+    async for dialog in client.iter_dialogs():
+        if dialog.is_channel and dialog.title == "مخزن الذاتية 📦":
+            __main__.self_config['storage_id'] = dialog.id
+            return dialog.id
+            
+    # إذا لم توجد، يتم إنشاؤها
+    await event.edit("⚙️ **جاري إنشاء قناة التخزين...**")
+    result = await client(functions.channels.CreateChannelRequest(
+        title="مخزن الذاتية 📦",
+        about="هذه القناة مخصصة لحفظ الرسائل المحذوفة تلقائياً.",
+        megagroup=False
+    ))
+    __main__.self_config['storage_id'] = result.chats[0].id
+    await event.respond("✅ **تم إنشاء قناة التخزين بنجاح!**")
+    return result.chats[0].id
+
+# --- أوامر التفعيل والتحكم ---
+
+@client.on(events.NewMessage(pattern=r"^\.تفعيل ذاتيه$"))
+async def start_self(event):
+    __main__.self_config['status'] = True
+    await get_storage(event)
+    await event.edit("🚀 **تم تفعيل نظام الذاتية الشامل.**\nيتم الآن مراقبة المحذوفات وتحويلها للمخزن.")
+
+@client.on(events.NewMessage(pattern=r"^\.تفعيل خاص$"))
+async def toggle_pv(event):
+    __main__.self_config['private'] = True
+    # شريط تحميل فخم
+    bar = ["⬜", "⬛", "⬛", "⬛", "⬛"]
+    for i in range(len(bar)):
+        bar[i] = "🟦"
+        await event.edit(f"**جاري تفعيل الخاص..**\n\n{''.join(bar)} {i*25}%")
+        await asyncio.sleep(0.3)
+    await event.edit("✅ **تم تفعيل الذاتية للخاص بنجاح!**")
+
+@client.on(events.NewMessage(pattern=r"^\.تفعيل مجموعات$"))
+async def toggle_groups(event):
+    __main__.self_config['groups'] = True
+    await event.edit("✅ **تم تفعيل الذاتية للمجموعات.**")
+
+@client.on(events.NewMessage(pattern=r"^\.ايقاف ذاتيه$"))
+async def stop_all(event):
+    __main__.self_config['status'] = False
+    __main__.self_config['private'] = False
+    __main__.self_config['groups'] = False
+    await event.edit("❌ **تم إيقاف نظام الذاتية بالكامل.**")
+
+# --- مراقبة الحذف والأرشفة ---
+
+@client.on(events.NewMessage)
+async def cache_all(event):
+    conf = __main__.self_config
+    if not conf['status']: return
+    
+    # حفظ الرسائل بناءً على النوع المفعل
+    if (event.is_private and conf['private']) or (event.is_group and conf['groups']):
+        conf['cache'][event.id] = event.message
+
+@client.on(events.Raw(types.UpdateDeleteMessages))
+async def on_delete(event):
+    conf = __main__.self_config
+    if not conf['status']: return
+
     for msg_id in event.messages:
-        if msg_id in __main__.msg_cache:
-            original_msg = __main__.msg_cache[msg_id]
+        if msg_id in conf['cache']:
+            msg = conf['cache'][msg_id]
+            sender = await msg.get_sender()
+            name = sender.first_name if sender else "مجهول"
+            chat_type = "خاص 👤" if msg.is_private else "مجموعة 👥"
             
-            # جلب اسم المرسل
-            sender = await original_msg.get_sender()
-            name = sender.first_name if sender else "مستخدم"
-            
-            info_text = (
-                "⚠️ **كاشف المحذوفات (نيثرون)**\n"
-                f"👤 **المرسل:** [{name}](tg://user?id={original_msg.sender_id})\n"
+            info = (
+                f"🗑 **رسالة محذوفة جديدة**\n"
+                f"👤 **المرسل:** [{name}](tg://user?id={msg.sender_id})\n"
+                f"📍 **النوع:** {chat_type}\n"
                 f"⏰ **وقت الحذف:** {datetime.datetime.now().strftime('%I:%M %p')}\n"
-                "👇 **الرسالة المحذوفة:**"
+                f"💬 **المحتوى:** 👇"
             )
             
-            # الإرسال للمحفوظات
-            await client.send_message("me", info_text)
-            await client.send_message("me", original_msg)
-            
-            # حذفها من الكاش بعد الصيد
-            del __main__.msg_cache[msg_id]
+            storage = await get_storage(None)
+            await client.send_message(storage, info)
+            await client.send_message(storage, msg)
+            del conf['cache'][msg_id]
+
+# --- نظام التنظيف التلقائي ---
+
+@client.on(events.NewMessage(pattern=r"^\.تفعيل حذف رسائل$"))
+async def auto_clean(event):
+    __main__.self_config['auto_clean'] = True
+    await event.edit("🧹 **تم تفعيل التنظيف التلقائي لمخزن الذاتية.**\nسيتم حذف الرسائل كل دقيقة.")
+    
+    while __main__.self_config['auto_clean']:
+        await asyncio.sleep(__main__.self_config['clean_interval'])
+        storage = await get_storage(None)
+        await client(functions.channels.DeleteHistoryRequest(channel=storage, max_id=0))
+
+# --- كليشة الأوامر م6 ---
+
+@client.on(events.NewMessage(pattern=r"^\.م6$"))
+async def help_menu(event):
+    menu = (
+        "🛠 **قائمة أوامر الذاتية والحذف**\n"
+        "--- --- --- --- --- --- ---\n"
+        "🔹 `.تفعيل ذاتيه` : إنشاء المخزن وتفعيل النظام\n"
+        "🔹 `.تفعيل خاص` : مراقبة حذف رسائل الخاص\n"
+        "🔹 `.تفعيل مجموعات` : مراقبة حذف رسائل الكروبات\n"
+        "🔹 `.ايقاف ذاتيه` : إيقاف النظام بالكامل\n"
+        "🔹 `.تفعيل حذف رسائل` : تنظيف المخزن تلقائياً\n"
+        "🔹 `.فحص ذاتيه` : لمعرفة حالة النظام والذاكرة\n"
+        "--- --- --- --- --- --- ---\n"
+        "⚙️ **المطور:** نظام نيثرون الذكي"
+    )
+    await event.edit(menu)
