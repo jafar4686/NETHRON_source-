@@ -1,63 +1,147 @@
 import __main__
-from telethon import events, types
+from telethon import events, types, functions
 import datetime
+import asyncio
 
 client = __main__.client
 
-# مخزن الرسائل في الذاكرة
-if not hasattr(__main__, 'msg_cache'):
-    __main__.msg_cache = {}
+# إعدادات الحالة
+if not hasattr(__main__, 'nethron_self'):
+    __main__.nethron_self = {
+        "storage_id": None,
+        "private_active": False,
+        "groups_active": False,
+        "auto_clean": False,
+        "clean_interval": 60, # بالثواني
+        "msg_cache": {}
+    }
 
-self_status = True 
+CONFIG = __main__.nethron_self
+HEADER = "★────────☭────────★\n"
+FOOTER = "\n★────────☭────────★"
 
-# 1. أوامر التحكم
-@client.on(events.NewMessage(pattern=r"^\.(تفعيل|تعطيل) ذاتيه$"))
-async def toggle_self(event):
-    global self_status
-    self_status = True if "تفعيل" in event.text else False
-    await event.edit(f"✅ **تم {'تفعيل' if self_status else 'تعطيل'} حفظ المحذوفات.**")
+# --- [1] قائمة الأوامر م6 ---
+@client.on(events.NewMessage(outgoing=True, pattern=r"^\.م6$"))
+async def nethron_m6(event):
+    text = (
+        f"{HEADER}"
+        "   ☭ • **𝑆𝑂𝑈𝑅𝐶𝐸 𝑁𝐸𝑇𝐻𝑅𝑂𝑁** • ☭\n"
+        "      • قسم الذاتية والحذف •\n"
+        f"{HEADER}\n"
+        "• `.تفعيل ذاتيه` : لإنشاء قناة التخزين\n"
+        "• `.تفعيل خاص` : صيد محذوفات الخاص\n"
+        "• `.تفعيل مجموعات` : صيد محذوفات الكروبات\n"
+        "• `.ايقاف (خاص/مجموعات)` : تعطيل الصيد\n"
+        "• `.تنظيف (تفعيل/تعطيل)` : حذف رسائل القناة تلقائياً\n"
+        f"{FOOTER}"
+    )
+    await event.edit(text)
 
-@client.on(events.NewMessage(pattern=r"^\.فحص ذاتيه$"))
-async def check_cache(event):
-    cache_count = len(__main__.msg_cache)
-    status = "شغال ✅" if self_status else "معطل ❌"
-    await event.edit(f"🤖 **نظام الذاتية:** {status}\n📦 **الرسائل المراقبة:** {cache_count}")
+# --- [2] إنشاء قناة التخزين تلقائياً ---
+@client.on(events.NewMessage(outgoing=True, pattern=r"^\.تفعيل ذاتيه$"))
+async def setup_storage(event):
+    await event.edit("🌀 **جاري إنشاء قناة التخزين...**\n`[▒▒▒▒▒▒▒▒▒▒] 0%` ")
+    await asyncio.sleep(1)
+    
+    try:
+        # إنشاء القناة
+        result = await client(functions.channels.CreateChannelRequest(
+            title=f"تخزين نيثرون - {datetime.datetime.now().strftime('%Y')}",
+            about="هذه القناة مخصصة لحفظ الرسائل المحذوفة (سورس نيثرون)",
+            megagroup=False
+        ))
+        CONFIG["storage_id"] = result.chats[0].id
+        
+        await event.edit("✅ **تم إنشاء قناة التخزين بنجاح!**\n`[██████████] 100%` \n"
+                         f"آيدي القناة: `{CONFIG['storage_id']}`")
+    except Exception as e:
+        await event.edit(f"❌ **فشل إنشاء القناة:** {str(e)}")
+    
+    await asyncio.sleep(10)
+    await event.delete()
 
-# 2. مراقبة وتخزين الرسائل الصادرة والواردة
+# --- [3] أوامر التفعيل والتعطيل مع شريط التحميل ---
+@client.on(events.NewMessage(outgoing=True, pattern=r"^\.تفعيل (خاص|مجموعات)$"))
+async def toggle_on(event):
+    mode = event.pattern_match.group(1)
+    key = "private_active" if mode == "خاص" else "groups_active"
+    
+    frames = ["🌑", "░ 20%", "▒ 50%", "▓ 80%", "██ 100%"]
+    for f in frames:
+        await event.edit(f"🌀 **جاري تفعيل صيد {mode}...**\n`{f}`")
+        await asyncio.sleep(0.3)
+    
+    CONFIG[key] = True
+    await event.edit(f"✅ **تم تفعيل صيد محذوفات {mode} بنجاح!**")
+    await asyncio.sleep(10)
+    await event.delete()
+
+@client.on(events.NewMessage(outgoing=True, pattern=r"^\.ايقاف (خاص|مجموعات)$"))
+async def toggle_off(event):
+    mode = event.pattern_match.group(1)
+    key = "private_active" if mode == "خاص" else "groups_active"
+    CONFIG[key] = False
+    await event.edit(f"📴 **تم إيقاف صيد {mode}.**")
+    await asyncio.sleep(10)
+    await event.delete()
+
+# --- [4] كاشف المحذوفات الذكي ---
 @client.on(events.NewMessage)
-async def cache_messages(event):
-    if not self_status or not event.is_private:
-        return
-    # تخزين الرسالة باستخدام الـ ID
-    __main__.msg_cache[event.id] = event.message
-    # تنظيف الكاش (أقصى حد 1000 رسالة)
-    if len(__main__.msg_cache) > 1000:
-        __main__.msg_cache.pop(next(iter(__main__.msg_cache)))
+async def cache_all(event):
+    # تخزين كل الرسائل لمراقبة حذفها لاحقاً
+    CONFIG["msg_cache"][event.id] = {
+        "msg": event.message,
+        "type": "خاص" if event.is_private else "مجموعة"
+    }
+    # تنظيف الكاش القديم
+    if len(CONFIG["msg_cache"]) > 2000:
+        CONFIG["msg_cache"].pop(next(iter(CONFIG["msg_cache"])))
 
-# 3. صيد الحذف باستخدام الـ Raw Update
 @client.on(events.Raw(types.UpdateDeleteMessages))
-async def handler(event):
-    if not self_status:
-        return
+async def on_delete(event):
+    if not CONFIG["storage_id"]: return
     
     for msg_id in event.messages:
-        if msg_id in __main__.msg_cache:
-            original_msg = __main__.msg_cache[msg_id]
+        if msg_id in CONFIG["msg_cache"]:
+            data = CONFIG["msg_cache"][msg_id]
+            msg = data["msg"]
+            m_type = data["type"]
             
-            # جلب اسم المرسل
-            sender = await original_msg.get_sender()
-            name = sender.first_name if sender else "مستخدم"
+            # التحقق هل النوع مفعل؟
+            if (m_type == "خاص" and not CONFIG["private_active"]) or \
+               (m_type == "مجموعة" and not CONFIG["groups_active"]):
+                continue
+
+            sender = await msg.get_sender()
+            name = getattr(sender, 'first_name', "مجهول")
             
-            info_text = (
-                "⚠️ **كاشف المحذوفات (نيثرون)**\n"
-                f"👤 **المرسل:** [{name}](tg://user?id={original_msg.sender_id})\n"
-                f"⏰ **وقت الحذف:** {datetime.datetime.now().strftime('%I:%M %p')}\n"
-                "👇 **الرسالة المحذوفة:**"
+            log_text = (
+                f"{HEADER}"
+                "⚠️ **تم صيد رسالة محذوفة**\n"
+                f"👤 **المرسل:** [{name}](tg://user?id={msg.sender_id})\n"
+                f"🏷 **النوع:** {m_type}\n"
+                f"⏰ **الوقت:** {datetime.datetime.now().strftime('%H:%M:%S')}\n"
+                f"{HEADER}\n"
+                f"💬 **الرسالة:**\n{msg.text or '«وسائط/ملف»'}"
             )
             
-            # الإرسال للمحفوظات
-            await client.send_message("me", info_text)
-            await client.send_message("me", original_msg)
-            
-            # حذفها من الكاش بعد الصيد
-            del __main__.msg_cache[msg_id]
+            await client.send_message(CONFIG["storage_id"], log_text, file=msg.media)
+
+# --- [5] نظام التنظيف التلقائي للقناة ---
+@client.on(events.NewMessage(outgoing=True, pattern=r"^\.تنظيف (تفعيل|تعطيل)$"))
+async def auto_clean_toggle(event):
+    cmd = event.pattern_match.group(1)
+    CONFIG["auto_clean"] = True if cmd == "تفعيل" else False
+    await event.edit(f"🗑 **نظام تنظيف القناة أصبح:** {'مفعل ✅' if CONFIG['auto_clean'] else 'معطل ❌'}")
+    
+    if CONFIG["auto_clean"]:
+        asyncio.create_task(cleaner_loop())
+
+async def cleaner_loop():
+    while CONFIG["auto_clean"]:
+        await asyncio.sleep(60) # فحص كل دقيقة
+        if CONFIG["storage_id"]:
+            async for msg in client.iter_messages(CONFIG["storage_id"]):
+                # إذا مر على الرسالة دقيقة
+                if (datetime.datetime.now(msg.date.tzinfo) - msg.date).seconds > 60:
+                    await msg.delete()
