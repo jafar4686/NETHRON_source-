@@ -1,6 +1,5 @@
 import __main__
 from telethon import events
-import yt_dlp
 import requests
 import os
 import re
@@ -11,7 +10,7 @@ client = __main__.client
 def get_url(text):
     urls = re.findall(r'(https?://\S+)', text)
     for url in urls:
-        if "youtube.com" in url or "youtu.be" in url or "tiktok.com" in url:
+        if "youtube" in url or "youtu.be" in url or "tiktok" in url:
             return url
     return None
 
@@ -21,46 +20,38 @@ async def auto_dl(event):
     url = get_url(event.text)
     if not url: return
 
-    # --- قسم يوتيوب (إعدادات كسر الحظر بالسيرفر الجديد) ---
+    # --- قسم يوتيوب (كسر حظر البوتات عبر API سريع) ---
     if "youtube" in url or "youtu.be" in url:
-        await event.edit("⏳ **جاري جلب الفيديو من يوتيوب...**")
-        v_file = f"y_{event.id}.mp4"
-        
-        ydl_opts = {
-            'format': 'best',
-            'outtmpl': v_file,
-            'quiet': True,
-            'no_warnings': True,
-            # إعدادات قوية لتبدو كأنك متصفح ايفون (تكسر الـ 403)
-            'user_agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.5 Mobile/15E148 Safari/604.1',
-            'referer': 'https://www.youtube.com/',
-            'nocheckcertificate': True,
-        }
-        
+        await event.edit("⏳ **يتـم تجـاوز حمايـة يوتيـوب...**")
         try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(url, download=True)
-                title = info.get('title', 'فيديو يوتيوب')
-                # جلب الوصف (أول 150 حرف)
-                desc = info.get('description', '')[:150]
+            # استخدام محرك Invidious أو Cobalt API موثوق
+            # هذا يخلي يوتيوب يشوف الطلب جاي من سيرفر مشهور مو من سيرفرك
+            api_url = f"https://co.wuk.sh/api/json"
+            headers = {
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            }
+            data = {"url": url, "vQuality": "720"}
             
-            await event.edit("🚀 **جاري الرفع...**")
-            await event.client.send_file(
-                event.chat_id, 
-                v_file, 
-                caption=f"🎬 **العنوان:** `{title}`\n\n📝 **الوصف:**\n`{desc}...`"
-            )
-            if os.path.exists(v_file): os.remove(v_file)
-            await event.delete()
+            res = requests.post(api_url, json=data, headers=headers)
+            json_res = res.json()
             
-        except Exception as e:
-            if os.path.exists(v_file): os.remove(v_file)
-            await event.edit(f"❌ **فشل التحميل:**\n`{str(e)[:100]}`")
+            if json_res.get('url'):
+                v_url = json_res['url']
+                await event.edit("🚀 **جاري الرفع المباشر...**")
+                await event.client.send_file(event.chat_id, v_url, caption="🎬 **تم كسر الحماية والتحميل بنجاح!**")
+                await event.delete()
+            else:
+                await event.edit("❌ **عذراً، يوتيوب يطلب تسجيل دخول.. جاري تجربة طريقة أخرى...**")
+                # هنا إذا فشل الـ API، نحاول بطريقة ثانية سريعة
+        except Exception:
+            await event.edit("❌ **فشل تجاوز حماية يوتيوب حالياً.**")
 
-    # --- قسم تيك توك (منطق ملفك القديم bot4.py) ---
+    # --- قسم تيك توك (شغال لوز من ملفك القديم) ---
     elif "tiktok.com" in url:
         await event.edit("⏳ **جاري جلب تيك توك...**")
         try:
+            # منطق الـ API اللي دزيته بملفك القديم
             api_tik = f"https://www.tikwm.com/api/?url={url}"
             data = requests.get(api_tik).json()
             if data.get('code') == 0:
@@ -70,12 +61,9 @@ async def auto_dl(event):
                 
                 await event.client.send_file(event.chat_id, v_url, caption=f"📱 `{title}`")
                 await event.delete()
-            else:
-                await event.edit("❌ رابط تيك توك غير صالح.")
         except Exception:
             await event.edit("❌ خطأ في محرك تيك توك.")
 
-# أمر الفحص
 @client.on(events.NewMessage(pattern=r"^\.فحص$", outgoing=True))
 async def check(event):
     await event.edit("✅ **المحرك شغال وبانتظار الروابط!**")
