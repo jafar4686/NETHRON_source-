@@ -5,7 +5,7 @@ import re
 # بيانات البوت الجديد
 API_ID = 24789364
 API_HASH = "deb58602a303b3440fdc227975ce90ea"
-BOT_TOKEN = "@taltbatbot"
+BOT_TOKEN = "8195644090:AAHfncBiSqGHQ8ozTrYxgEJ_1iKrZ_h9HRc"
 
 bot = TelegramClient('new_downloader', API_ID, API_HASH).start(bot_token=BOT_TOKEN)
 
