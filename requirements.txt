@@ -3,4 +3,3 @@ requests
 asyncio
 yt-dlp
 resources
-dateutil
