@@ -9,7 +9,9 @@ BOT_TOKEN = "8136996400:AAEO4uDFUweXXiz49bs91hI_jmvBqh8CStI"
 SESSION_DB = "database.txt" 
 USERS_DB = "nethron_vips.json"
 CODES_FILE = "nethron_codes.txt" 
-SUDO_ID = 5580918933 
+
+# قائمة المطورين (يتم تخطي الاشتراك لهم)
+SUDO_IDS = [5580918933, 7273666832]
 
 bot = TelegramClient('MakerBot', api_id, api_hash).start(bot_token=BOT_TOKEN)
 
@@ -27,8 +29,7 @@ async def load_plugins(user_client):
             spec = importlib.util.spec_from_file_location(name, f)
             mod = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(mod)
-        except Exception as e: 
-            print(f"❌ Error loading {name}: {e}")
+        except: pass
 
 async def start_all_accounts():
     if os.path.exists(SESSION_DB):
@@ -42,11 +43,14 @@ async def start_all_accounts():
                         if await c.is_user_authorized():
                             await load_plugins(c)
                             asyncio.create_task(c.run_until_disconnected())
-                            print(f"✅ تم تشغيل حساب من {SESSION_DB}")
-                    except Exception as e: print(f"⚠️ فشل سيزون نصي: {e}")
+                    except: pass
 
 # --- [3] نظام فحص الأيام والاشتراك ---
 def get_sub_info(uid):
+    # إذا كان المستخدم مطور، يعتبر مفعّل للأبد
+    if uid in SUDO_IDS:
+        return "مطور السورس 👑", "∞"
+        
     if not os.path.exists(USERS_DB): return "غير مفعّل ✘", "0"
     try:
         with open(USERS_DB, "r") as f:
@@ -74,7 +78,7 @@ def verify_code(user_input):
     if days: open(CODES_FILE, "w").writelines(new_l)
     return days
 
-# --- [4] الكليشة المطلوبة مع حالة الاشتراك ---
+# --- [4] الكليشة ---
 def get_welcome_text(uid):
     status, days = get_sub_info(uid)
     return (
@@ -101,7 +105,8 @@ async def start(event):
     status, _ = get_sub_info(uid)
     url = random.choice(["https://t.me/NETH_RON", "https://t.me/xxnnxg"])
     
-    if "مفعّل" in status:
+    # المطور أو المشترك يفتح اللوحة مباشرة
+    if uid in SUDO_IDS or "مفعّل" in status:
         btns = [[Button.inline("📱 فتح لوحة التحكم", data="open_panel")], 
                 [Button.url("🛒 شراء كود", url=url)]]
     else:
@@ -123,8 +128,8 @@ async def callback_handler(event):
                 d = json.load(open(USERS_DB)) if os.path.exists(USERS_DB) else {}
                 d[str(uid)] = (datetime.now() + timedelta(days=days)).isoformat()
                 json.dump(d, open(USERS_DB, "w"), indent=4)
-                await conv.send_message(f"✅ تم التفعيل لمدة {days} يوم! ارسل /start لتحديث الحالة.")
-            else: await conv.send_message("❌ كود خطأ أو مستخدم!")
+                await conv.send_message(f"✅ تم التفعيل لمدة {days} يوم! ارسل /start")
+            else: await conv.send_message("❌ كود خطأ!")
 
     elif data == "add_acc":
         async with bot.conversation(event.chat_id) as conv:
@@ -138,10 +143,7 @@ async def callback_handler(event):
                 await conv.send_message("📥 أرسل الكود:")
                 c_res = await conv.get_response()
                 await client.sign_in(phone, c_res.text)
-                
-                with open(SESSION_DB, "a") as f:
-                    f.write(client.session.save() + "\n")
-                
+                with open(SESSION_DB, "a") as f: f.write(client.session.save() + "\n")
                 await conv.send_message("✅ تم الربط والحفظ بنجاح!")
                 await load_plugins(client)
                 asyncio.create_task(client.run_until_disconnected())
@@ -149,17 +151,16 @@ async def callback_handler(event):
 
     elif data == "open_panel":
         status, _ = get_sub_info(uid)
-        if "مفعّل" in status:
+        if uid in SUDO_IDS or "مفعّل" in status:
             btns = [[Button.inline("➕ إضافة حساب", data="add_acc")], 
-                    [Button.inline("🔄 تحديث ورسترت", data="restart")]]
+                    [Button.inline("🔄 ريستارت السورس", data="restart")]]
             await event.edit("⚙️ **لوحة التحكم الأصلية**", buttons=btns)
-        else: await event.answer("⚠️ يجب التفعيل أولاً!", alert=True)
+        else: await event.answer("⚠️ غير مشترك!", alert=True)
 
-    elif data == "restart" and uid == SUDO_ID:
+    elif data == "restart" and uid in SUDO_IDS:
         os.execl(sys.executable, sys.executable, *sys.argv)
 
-# --- [6] التشغيل النهائي ---
+# --- [6] التشغيل ---
 loop = asyncio.get_event_loop()
 loop.create_task(start_all_accounts()) 
-print("🚀 سورس نيثرون قيد التشغيل بنسخة الاستقرار...")
 bot.run_until_disconnected()
