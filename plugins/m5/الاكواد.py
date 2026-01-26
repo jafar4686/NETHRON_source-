@@ -1,108 +1,110 @@
 import __main__
-import json
-import os
+from telethon import events
 import random
 import string
-from datetime import datetime, timedelta
-from telethon import events, Button
+import time
+import os
+import asyncio
 
-# سحب البوت والكلاينت من الملف الرئيسي (نفس نظام dark.py و music.py)
-bot = getattr(__main__, 'bot', None)
-client = getattr(__main__, 'client', None)
+client = __main__.client
 
-KEYS_DB = "keys_db.json"
-SUDO_ID = 5580918933
-ADMIN_ID = 7273666832
+# ملف التخزين
+CODES_FILE = "nethron_codes.txt"
 
-# دالة إدارة البيانات (JSON)
-def load_keys():
-    if not os.path.exists(KEYS_DB): return {}
-    try:
-        with open(KEYS_DB, "r") as f: return json.load(f)
-    except: return {}
+HEADER = (
+    "★────────☭────────★\n"
+    "   ☭ • 𝑆𝑂𝑈𝑅𝐶𝐸 𝑁𝐸𝑇𝐻𝑅𝑂𝑁 • ☭\n"
+    "                  ☭ • سورس نيثرون • ☭\n"
+    "★────────☭────────★\n"
+)
 
-def save_keys(data):
-    with open(KEYS_DB, "w") as f: json.dump(data, f, indent=4)
+# دالة لتوليد كود عشوائي
+def generate_code():
+    chars = string.ascii_uppercase + string.digits
+    return "NETH-" + ''.join(random.choices(chars, k=8))
 
-HEADER = "★──────────☭──────────★\n"
+# دالة لحفظ الكود في الملف
+def save_code(serial, code, days):
+    with open(CODES_FILE, "a") as f:
+        f.write(f"{serial}|{code}|{days}\n")
 
-# فحص الصلاحية للمطور والآدمن
-def is_auth(uid):
-    return uid in [SUDO_ID, ADMIN_ID]
+# دالة لجلب كل الأكواد
+def load_codes():
+    if not os.path.exists(CODES_FILE):
+        return []
+    with open(CODES_FILE, "r") as f:
+        return [line.strip().split("|") for line in f.readlines()]
 
-if bot:
-    # 1. إضافة كود (.اضافة كود 30)
-    @bot.on(events.NewMessage(pattern=r"^\.اضافة كود (\d+)$"))
-    async def add_key(event):
-        if not is_auth(event.sender_id): return
-        
-        days = int(event.pattern_match.group(1))
-        # توليد كود عشوائي (6 رموز)
-        code = f"NETH-{''.join(random.choices(string.ascii_uppercase + string.digits, k=6))}"
-        
-        db = load_keys()
-        serial = str(len(db) + 1)
-        db[serial] = {
-            "code": code, 
-            "days": days, 
-            "status": "available",
-            "date": datetime.now().strftime("%Y-%m-%d")
-        }
-        save_keys(db)
-        
-        res = (
-            f"{HEADER}"
-            "✨ **تم إنشاء مفتاح جديد بنجاح**\n"
-            f"{HEADER}\n"
-            f"🎫 **الكود:** `{code}`\n"
-            f"⏱️ **المدة:** {days} يوم\n"
-            f"🔢 **التسلسل:** {serial}\n"
-            f"{HEADER}"
-        )
-        await event.respond(res)
+# =========================
+# 1. إضافة كود نيثرون
+# =========================
+@client.on(events.NewMessage(pattern=r"^\.اضافة كود نيثرون (\S+)$"))
+async def add_code(event):
+    if not event.out:
+        return
 
-    # 2. حالة المفاتيح (.حالة المفاتيح)
-    @bot.on(events.NewMessage(pattern=r"^\.حالة المفاتيح$"))
-    async def list_keys(event):
-        if not is_auth(event.sender_id): return
-        
-        db = load_keys()
-        if not db: return await event.respond("📭 **لا توجد أكواد محفوظة.**")
-        
-        msg = f"{HEADER}📋 **مفاتيح سورس نيثرون:**\n{HEADER}\n"
-        for s, d in db.items():
-            st = "✅ متاح" if d['status'] == 'available' else "❌ مستخدم"
-            msg += f"🔢 {s} ➥ `{d['code']}`\n⏱️ {d['days']} يوم | {st}\n\n"
-        
-        await event.respond(msg + HEADER)
+    days = event.pattern_match.group(1)
+    new_code = generate_code()
+    
+    # جلب الرقم التسلسلي التالي
+    all_codes = load_codes()
+    serial = len(all_codes) + 1
 
-    # 3. حذف كود (.حذف كود 1)
-    @bot.on(events.NewMessage(pattern=r"^\.حذف كود (\d+)$"))
-    async def del_key(event):
-        if not is_auth(event.sender_id): return
-        
-        serial = event.pattern_match.group(1)
-        db = load_keys()
-        
-        if serial in db:
-            del db[serial]
-            save_keys(db)
-            await event.respond(f"🗑️ **تم حذف المفتاح رقم ({serial}) بنجاح.**")
-        else:
-            await event.respond("❌ **هذا التسلسل غير موجود.**")
+    # شريط التحميل
+    msg = await event.edit("⏳ **جاري إنشاء الكود...**\n`[▒▒▒▒▒▒▒▒▒▒] 0%`")
+    await asyncio.sleep(0.5)
+    await msg.edit("⏳ **جاري إنشاء الكود...**\n`[████▒▒▒▒▒▒] 40%`")
+    await asyncio.sleep(0.5)
+    await msg.edit("⏳ **جاري إنشاء الكود...**\n`[████████▒▒] 80%`")
+    await asyncio.sleep(0.5)
 
-    # 4. المساعدة (.الاكواد)
-    @bot.on(events.NewMessage(pattern=r"^\.الاكواد$"))
-    async def help_keys(event):
-        if not is_auth(event.sender_id): return
-        
-        help_msg = (
-            f"{HEADER}"
-            "🛠️ **لوحة إدارة مفاتيح التفعيل**\n"
-            f"{HEADER}\n"
-            "• `.اضافة كود (الايام)`\n"
-            "• `.حالة المفاتيح`\n"
-            "• `.حذف كود (التسلسل)`\n"
-            f"{HEADER}"
-        )
-        await event.respond(help_msg)
+    save_code(serial, new_code, days)
+
+    await msg.edit(
+        HEADER +
+        f"✅ **تم إضافة الكود بنجاح**\n\n"
+        f"🔢 الرقم التسلسلي: `{serial}`\n"
+        f"🔑 الكود: `{new_code}`\n"
+        f"⏳ المدة: `{days}`\n\n"
+        f"📌 يحفظ في: `{CODES_FILE}`"
+    )
+
+# =========================
+# 2. حذف كود
+# =========================
+@client.on(events.NewMessage(pattern=r"^\.حذف كود (\d+)$"))
+async def delete_code(event):
+    if not event.out:
+        return
+
+    serial_to_del = event.pattern_match.group(1)
+    all_codes = load_codes()
+    new_list = [c for c in all_codes if c[0] != serial_to_del]
+
+    if len(all_codes) == len(new_list):
+        return await event.edit("❌ **لم يتم العثور على كود بهذا الرقم التسلسلي.**")
+
+    # إعادة كتابة الملف
+    with open(CODES_FILE, "w") as f:
+        for c in new_list:
+            f.write("|".join(c) + "\n")
+
+    await event.edit(f"🗑️ **تم حذف الكود رقم ({serial_to_del}) بنجاح.**")
+
+# =========================
+# 3. حالة الأكواد
+# =========================
+@client.on(events.NewMessage(pattern=r"^\.حالة الاكواد$"))
+async def status_codes(event):
+    if not event.out:
+        return
+
+    all_codes = load_codes()
+    if not all_codes:
+        return await event.edit(HEADER + "📭 **لا توجد أكواد مسجلة حالياً.**")
+
+    text = HEADER + "📋 **قائمة الأكواد المتوفرة:**\n\n"
+    for c in all_codes:
+        text += f"#{c[0]} | `{c[1]}` | ⏳ `{c[2]}`\n"
+
+    await event.edit(text)
