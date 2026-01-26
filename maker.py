@@ -1,4 +1,4 @@
-import os, sys, asyncio, glob, importlib.util, __main__, subprocess, json, re
+import os, sys, asyncio, glob, importlib.util, __main__, subprocess, json, re, random
 from telethon import TelegramClient, events, Button
 from telethon.sessions import StringSession
 from datetime import datetime, timedelta
@@ -9,7 +9,7 @@ BOT_TOKEN = "8136996400:AAEO4uDFUweXXiz49bs91hI_jmvBqh8CStI"
 SESSION_DB = "database.txt"
 USERS_DB = "nethron_vips.json"
 CODES_FILE = "nethron_codes.txt" 
-SUDO_ID = 5580918933 # أيديك للتحكم التقني
+SUDO_ID = 5580918933 
 
 bot = TelegramClient('MakerBot', api_id, api_hash).start(bot_token=BOT_TOKEN)
 __main__.bot = bot
@@ -26,7 +26,6 @@ def save_users(data):
     with open(USERS_DB, "w") as f: json.dump(data, f, indent=4)
 
 def is_subscribed(uid):
-    # نظام المساواة: الكل (بما فيهم المطور) يحتاج تفعيل كود أول مرة
     users = load_users()
     if str(uid) in users:
         return datetime.fromisoformat(users[str(uid)]) > datetime.now()
@@ -34,8 +33,6 @@ def is_subscribed(uid):
 
 def verify_and_use_code(user_input):
     if not os.path.exists(CODES_FILE): return None
-    
-    # تنظيف مدخل المستخدم: استخراج الكود الذي يبدأ بـ NETH-
     clean_user_code = ""
     for word in user_input.replace('|', ' ').split():
         if word.strip().startswith("NETH-"):
@@ -48,28 +45,19 @@ def verify_and_use_code(user_input):
     
     new_lines = []
     found_days = None
-    
     for line in lines:
-        # البحث عن السطر الذي يحتوي الكود المطلوب
         if clean_user_code in line:
             try:
-                # تقسيم السطر بواسطة |
                 parts = line.strip().split("|")
-                # إذا كان التنسيق (ID|CODE|DAYS) نأخذ العمود الثالث (الأيام)
                 if len(parts) >= 3:
-                    # استخراج الرقم فقط من الجزء الثالث لتجنب أحرف مثل 'd'
                     day_match = re.search(r'\d+', parts[2])
-                    if day_match:
-                        found_days = int(day_match.group())
+                    found_days = int(day_match.group()) if day_match else 30
                 else:
-                    # إذا كان التنسيق مختلفاً، نأخذ أول رقم يظهر بعد الكود في السطر
                     suffix = line.split(clean_user_code)[1]
                     day_match = re.search(r'\d+', suffix)
-                    if day_match:
-                        found_days = int(day_match.group())
-            except:
-                found_days = 30 # افتراضي عند الخطأ
-            continue # حذف الكود من الملف
+                    found_days = int(day_match.group()) if day_match else 30
+            except: found_days = 30
+            continue 
         new_lines.append(line)
     
     if found_days:
@@ -77,7 +65,7 @@ def verify_and_use_code(user_input):
             f.writelines(new_lines)
     return found_days
 
-# --- [3] تشغيل البلكنز والحسابات المنصبة ---
+# --- [3] تشغيل السورس ---
 async def load_plugins(user_client):
     __main__.client = user_client
     files = glob.glob("plugins/**/*.py", recursive=True)
@@ -88,7 +76,7 @@ async def load_plugins(user_client):
             spec = importlib.util.spec_from_file_location(name, f)
             mod = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(mod)
-        except Exception as e: print(f"❌ Error loading {name}: {e}")
+        except: pass
 
 async def start_all_accounts():
     if os.path.exists(SESSION_DB):
@@ -104,27 +92,44 @@ async def start_all_accounts():
                             asyncio.create_task(c.run_until_disconnected())
                     except: pass
 
-# --- [4] الواجهة والأوامر ---
-HEADER = "★──────────☭──────────★\n"
+# --- [4] كليشة الترحيب والأنيميشن ---
+FRAMES = ["◜", "◝", "◞", "◟"]
+
+def get_welcome_text(frame):
+    return (
+        "◆━━━━━━━━━━━━━━━━━◆\n"
+        f"   🌀 **𝑆𝑂𝑈𝑅𝐶𝐸 𝑁𝐸𝑇𝐻𝑅𝑂𝑁 𝑉𝐼𝑃** {frame}\n"
+        "◆━━━━━━━━━━━━━━━━━◆\n\n"
+        f"⦿ أهلاً بك في نظام التنصيب الذكي {frame}\n"
+        f"⦿ سورس نيثرون يوفر لك أقوى حماية {frame}\n"
+        f"⦿ ميزات حصرية وتشفير كامل للبيانات {frame}\n"
+        f"⦿ سهولة في التحكم وسرعة في الأداء {frame}\n\n"
+        "◆━━━━━━━━━━━━━━━━━◆\n"
+        f"◈➥ [𝑫𝑬𝑽〔المطور〕](https://t.me/NETH_RON) {frame}\n"
+        f"◈➥ [𝑫𝑬𝑽〔المطور〕](https://t.me/xxnnxg) {frame}\n"
+        "◆━━━━━━━━━━━━━━━━━◆"
+    )
 
 @bot.on(events.NewMessage(pattern='/start'))
 async def start(event):
     uid = event.sender_id
-    msg = (
-        f"{HEADER}"
-        "   ☭ • **𝑆𝑂𝑈𝑅𝐶𝐸 𝑁𝐸𝑇𝐻𝑅𝑂𝑁 𝑉𝐼𝑃** • ☭\n"
-        f"{HEADER}\n"
-        "مرحباً بك في نظام التنصيب.\n\n"
-        "➥ **𝑫𝑬𝑽 :** @NETH_RON\n"
-        f"{HEADER}"
-    )
+    
+    # اختيار يوزر عشوائي لزر الشراء
+    buy_url = random.choice(["https://t.me/NETH_RON", "https://t.me/xxnnxg"])
     
     if is_subscribed(uid):
-        buttons = [[Button.inline("📱 فتح لوحة التحكم", data="open_panel")]]
+        buttons = [[Button.inline("📱 فتح لوحة التحكم", data="open_panel")],
+                   [Button.url("🛒 شراء كود تفعيل", url=buy_url)]]
     else:
-        buttons = [[Button.inline("🔑 تفعيل الاشتراك بالكود", data="activate_code")]]
-    
-    await event.respond(msg, buttons=buttons)
+        buttons = [[Button.inline("🔑 تفعيل الاشتراك بالكود", data="activate_code")],
+                   [Button.url("🛒 شراء كود تفعيل", url=buy_url)]]
+
+    # تشغيل الأنيميشن (4 دورات للدوامة)
+    msg = await event.respond(get_welcome_text(FRAMES[0]), buttons=buttons, link_preview=False)
+    for _ in range(3): 
+        for frame in FRAMES:
+            await asyncio.sleep(0.3)
+            await msg.edit(get_welcome_text(frame), buttons=buttons, link_preview=False)
 
 @bot.on(events.NewMessage(pattern='/P'))
 async def fast_panel(event):
@@ -143,24 +148,21 @@ async def callback_handler(event):
 
     if data == "activate_code":
         async with bot.conversation(event.chat_id) as conv:
-            await conv.send_message("🎟️ **أرسل كود التفعيل الخاص بك:**")
+            dev_user = random.choice(["NETH_RON", "xxnnxg"])
+            await conv.send_message(f"🎟️ **أرسل كود التفعيل الخاص بك:**\n📥 للشراء: @{dev_user}")
             user_input = (await conv.get_response()).text.strip()
-            
             days = verify_and_use_code(user_input)
-            
             if days:
-                p = await conv.send_message("🔄 **جاري التحقق من الكود...**")
                 users = load_users()
                 users[str(uid)] = (datetime.now() + timedelta(days=days)).isoformat()
                 save_users(users)
-                await asyncio.sleep(1)
-                await p.edit(f"✅ **تم تفعيل اشتراكك بنجاح لمدة {days} يوم!**\nارسل /P لفتح اللوحة.")
+                await conv.send_message(f"✅ **تم التفعيل بنجاح لمدة {days} يوم!**\nارسل /P للوحة.")
             else:
-                await conv.send_message("❌ **الكود خاطئ أو تم استخدامه مسبقاً!**")
+                await conv.send_message("❌ **الكود خاطئ أو مستخدم مسبقاً!**")
 
     elif data == "open_panel":
-        if not is_subscribed(uid): return await event.answer("⚠️ اشتراكك منتهي!", alert=True)
-        btns = [[Button.inline("➕ إضافة حساب (رقم)", data="add_acc")],
+        if not is_subscribed(uid): return await event.answer("⚠️ منتهي!", alert=True)
+        btns = [[Button.inline("➕ إضافة حساب", data="add_acc")],
                 [Button.inline("🔄 تحديث السورس", data="restart")],
                 [Button.inline("📊 إحصائيات", data="stats")]]
         await event.edit("⚙️ **لوحة التحكم الأصلية**", buttons=btns)
@@ -168,13 +170,13 @@ async def callback_handler(event):
     elif data == "add_acc":
         if not is_subscribed(uid): return
         async with bot.conversation(event.chat_id) as conv:
-            await conv.send_message("📱 **أرسل الرقم مع الرمز (مثال +964):**")
+            await conv.send_message("📱 **أرسل الرقم مع الرمز (مثل +964):**")
             phone = (await conv.get_response()).text.replace(" ", "")
             c = TelegramClient(StringSession(), api_id, api_hash)
             await c.connect()
             try:
                 await c.send_code_request(phone)
-                await conv.send_message("📥 **أرسل الكود المكون من 5 أرقام:**")
+                await conv.send_message("📥 **أرسل الكود:**")
                 code_in = (await conv.get_response()).text.replace(" ", "")
                 await c.sign_in(phone, code_in)
                 with open(SESSION_DB, "a") as f: f.write(c.session.save() + "\n")
@@ -185,12 +187,12 @@ async def callback_handler(event):
 
     elif data == "restart":
         if uid == SUDO_ID:
-            await event.answer("🔄 جاري إعادة التشغيل...", alert=True)
+            await event.answer("🔄 جاري التحديث...", alert=True)
             os.execl(sys.executable, sys.executable, *sys.argv)
         else:
-            await event.answer("❌ هذا الأمر للمطور فقط.", alert=True)
+            await event.answer("❌ للمطور فقط!", alert=True)
 
-# --- [5] التشغيل ---
+# تشغيل
 loop = asyncio.get_event_loop()
 loop.create_task(start_all_accounts())
 bot.run_until_disconnected()
