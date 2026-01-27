@@ -1,6 +1,6 @@
-import __main__
+import __main__, asyncio
 from telethon import events
-import asyncio
+from plugins.settings_manager import get_anim_delay
 
 client = getattr(__main__, 'client', None)
 
@@ -12,7 +12,6 @@ async def loading_anim(event):
         try:
             while True:
                 for f in vortex:
-                    animated_text = text.replace("$تحميل", f)
-                    await event.edit(animated_text)
-                    await asyncio.sleep(0.3) # سرعة الدوران
+                    await event.edit(text.replace("$تحميل", f))
+                    await asyncio.sleep(get_anim_delay())
         except: pass
