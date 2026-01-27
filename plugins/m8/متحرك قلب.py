@@ -1,20 +1,18 @@
 import __main__
 from telethon import events
+import asyncio
 
 client = getattr(__main__, 'client', None)
 
-@client.on(events.NewMessage(pattern=r"^\.م8$"))
-async def menu8(event):
-    if not event.out: return
-    klisha = (
-        "★────────☭────────★\n"
-        "   ☭ • 𝑆𝑂𝑈𝑅𝐶𝐸 𝑁𝐸𝑇𝐻𝑅𝑂𝑁 • ☭\n"
-        "                  ☭ • سورس نيثرون • ☭\n"
-        "★────────☭────────★\n\n"
-        "⚙️ أوامر المتغيرات المتحركة:\n\n"
-        "• `$قلب` ➥ قلوب ملونة متحركة\n"
-        "• `$تحميل` ➥ حركة دوامة (Vortex)\n\n"
-        "💬 اكتب المتغير داخل أي رسالة وسيبدأ الأنميشن فوراً.\n\n"
-        "★────────☭────────★"
-    )
-    await event.edit(klisha)
+@client.on(events.NewMessage(outgoing=True))
+async def hearts_anim(event):
+    if "$قلب" in event.text:
+        text = event.text
+        hearts = ["❤️", "🧡", "💛", "💚", "💙", "💜", "🖤", "🤍", "🤎"]
+        try:
+            while True:
+                for h in hearts:
+                    animated_text = text.replace("$قلب", h)
+                    await event.edit(animated_text)
+                    await asyncio.sleep(0.5)
+        except: pass
