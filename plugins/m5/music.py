@@ -4,7 +4,7 @@ import re
 from telethon import events, types
 
 client = __main__.client
-TARGET_BOT = "@OTHMAN_HKS_bot"
+TARGET_BOT = "@ckdkvnsndjcbot"
 
 @client.on(events.NewMessage(outgoing=True, pattern=r"^\.(بحث يوت|بحث تيك) (.*)"))
 async def nethron_search_dl(event):
