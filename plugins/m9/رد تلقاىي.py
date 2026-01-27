@@ -1,7 +1,7 @@
 import __main__, asyncio, json, os
 from telethon import events, Button
 
-# استدعاء المتغيرات المحقونة من الميكر
+# استدعاء الكلاينت (حسابك) والبوت المساعد (الميكر)
 client = getattr(__main__, 'client', None)
 tgbot = getattr(__main__, 'tgbot', None) 
 
@@ -15,70 +15,71 @@ def load_data():
 def save_data(data):
     with open(FAR_DB, "w") as f: json.dump(data, f)
 
-# 1. أوامر التحكم
+# --- أوامر التحكم بالحساب ---
 @client.on(events.NewMessage(outgoing=True, pattern=r"^\.اضافة فار (.+)"))
 async def add_far(event):
-    msg = event.pattern_match.group(1)
     data = load_data()
-    data["msg"] = msg
+    data["msg"] = event.pattern_match.group(1)
     save_data(data)
-    await event.edit("✅ **تم حفظ كليشة الفار بنجاح.**\n• استخدم $warn للتحذيرات.")
+    await event.edit("✅ **تم حفظ الكليشة بنجاح.**")
 
 @client.on(events.NewMessage(outgoing=True, pattern=r"^\.(تفعيل|ايقاف) الفار$"))
 async def toggle_far(event):
     data = load_data()
     data["status"] = True if "تفعيل" in event.text else False
     save_data(data)
-    status = "شغال ✅" if data["status"] else "معطل ❌"
+    status = "شغال ✅" if data["status"] else "مطفي ❌"
     await event.edit(f"⚙️ **نظام الفار الآن: {status}**")
 
-# 2. محرك الحماية (تم إصلاح خطأ AttributeError هنا)
+# --- محرك الربط: حسابك يراقب والبوت المساعد يرسل ---
 @client.on(events.NewMessage(incoming=True, func=lambda e: e.is_private))
 async def far_engine(event):
     data = load_data()
     me = await client.get_me()
     
-    # إصلاح الخطأ: التحقق من البوت والمالك
+    # فحص الأمان لتجنب الأخطاء البرمجية
     sender = await event.get_sender()
-    if not data["status"] or event.sender_id == me.id or (sender and sender.bot):
+    if not data["status"] or event.sender_id == me.id or (sender and getattr(sender, 'bot', False)):
         return
     
     uid = str(event.sender_id)
     u_data = data["users"].get(uid, 0)
     
-    if u_data >= data["limit"]: return 
+    # نظام التحذيرات والكتم
+    if u_data >= data["limit"]:
+        return 
 
     u_data += 1
     data["users"][uid] = u_data
     save_data(data)
 
-    if u_data <= data["limit"]:
-        warn_left = data["limit"] - u_data
-        final_msg = data["msg"].replace("$warn", str(warn_left))
+    if u_data == 1: # يرسل عبر البوت في أول رسالة فقط
+        final_msg = data["msg"].replace("$warn", str(data["limit"] - u_data))
         
-        # الأزرار عبر البوت المساعد (tgbot)
+        # الأزرار اللي تطلع للمستخدم
         buttons = [
             [Button.inline("طلب تحدث 💬", data=f"ask_{uid}")],
             [Button.url("مراسلة الأدمن 👤", url="t.me/xxnnxg")],
             [Button.inline("إرسال رسالة واحدة ✉️", data=f"once_{uid}")]
         ]
         
+        # الأمر المباشر للبوت المساعد بالإرسال لهذا الشخص
         try:
             await tgbot.send_message(event.chat_id, final_msg, buttons=buttons)
         except Exception as e:
-            print(f"Error sending buttons: {e}")
-            await event.reply(final_msg)
+            print(f"Error via Bot: {e}")
 
-# 3. معالج ضغطات الأزرار (في الميكر عبر tgbot)
+# --- معالجة الأزرار (تتم عبر البوت المساعد) ---
 @tgbot.on(events.CallbackQuery)
 async def buttons_callback(event):
-    data = event.data.decode()
-    uid = event.sender_id
+    query_data = event.data.decode()
     me = await client.get_me()
 
-    if data.startswith("ask_"):
+    if query_data.startswith("ask_"):
+        user_id = query_data.split("_")[1]
         await event.answer("تم إرسال طلبك للمالك..", alert=True)
-        await client.send_message(me.id, f"👤 المستخدم [{uid}](tg://user?id={uid}) يطلب التحدث معك.")
+        # إرسال إشعار لحسابك الشخصي
+        await client.send_message(me.id, f"👤 المستخدم [{user_id}](tg://user?id={user_id}) يطلب التحدث معك.")
 
-    elif data.startswith("once_"):
+    elif query_data.startswith("once_"):
         await event.edit("✉️ **اكتب رسالتك الآن وسيتم توجيهها للمالك.**")
