@@ -4,13 +4,12 @@ from telethon.tl.functions.account import UpdateProfileRequest
 from telethon.tl.functions.users import GetFullUserRequest
 import asyncio
 from datetime import datetime
-import pytz # مكتبة المناطق الزمنية
+import pytz
 
 client = __main__.client
 time_tasks = {"name": None, "bio": None}
 VORTEX = ["◜", "◝", "◞", "◟"]
 
-# دالة لجلب وقت العراق حصراً
 def get_iraq_time():
     iraq_tz = pytz.timezone('Asia/Baghdad')
     return datetime.now(iraq_tz).strftime("%I:%M")
@@ -56,12 +55,13 @@ async def start_time(event):
     if time_tasks[mode]:
         return await event.edit(f"⚠️ الوقت في {choice} شغال بالفعل!")
     
-    # --- أنيميشن التحميل ---
-    for i in range(8):  # يكرر الدوامة 8 مرات (حوالي 4 ثواني)
-        await event.edit(f"صبرك {VORTEX[i % 4]} 〔جاي يتفعل الوقت〕")
-        await asyncio.sleep(0.5)
+    # --- أنيميشن الدوامة المزدوجة ---
+    for i in range(10): 
+        f = VORTEX[i % 4]
+        await event.edit(f"{f} 〔صبرك جاي يتفعل〕 {f}")
+        await asyncio.sleep(0.4)
     
-    # --- رسالة التأكيد والزخرفة ---
+    # --- رسالة التأكيد النهائية ---
     await event.edit(
         "◆━━━━━━━━━━━━━━━━━◆\n"
         "✅ اشتغل الوقت ضلعي روح شوف\n"
