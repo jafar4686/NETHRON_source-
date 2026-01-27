@@ -5,16 +5,17 @@ from datetime import datetime, timedelta
 from config import api_id, api_hash
 
 # --- [1] الإعدادات الأساسية ---
+# توكن البوت المساعد المسؤول عن الأزرار الشفافة
 BOT_TOKEN = "8136996400:AAEO4uDFUweXXiz49bs91hI_jmvBqh8CStI"
 SESSION_DB = "database.txt" 
 USERS_DB = "nethron_vips.json"
 CODES_FILE = "nethron_codes.txt" 
 SUDO_IDS = [5580918933, 7273666832]
 
-# تشغيل البوت المساعد (المسؤول عن الأزرار)
+# تشغيل البوت المساعد (tgbot)
 bot = TelegramClient('MakerBot', api_id, api_hash).start(bot_token=BOT_TOKEN)
 
-# --- [2] نظام تشغيل الأوامر (تعديل الربط والحقن) ---
+# --- [2] نظام تشغيل الأوامر (الربط والاستدعاء) ---
 async def load_plugins(user_client):
     files = glob.glob("plugins/**/*.py", recursive=True)
     for f in files:
@@ -24,12 +25,14 @@ async def load_plugins(user_client):
             spec = importlib.util.spec_from_file_location(name, f)
             mod = importlib.util.module_from_spec(spec)
             
-            # --- ربط الكلاينت وتوكن البوت المساعد بملفات الـ plugins ---
-            mod.client = user_client
-            mod.tgbot = bot  # تمرير البوت المساعد لاستخدامه في الأزرار
+            # --- حقن المتغيرات لضمان الربط الكامل ---
+            mod.client = user_client # ربط الحساب الشخصي
+            mod.tgbot = bot        # ربط توكن البوت للأزرار
+            
+            # جعلها متاحة في المحرك الرئيسي
             __main__.client = user_client
             __main__.tgbot = bot
-            # -------------------------------------------------------
+            # ---------------------------------------
             
             spec.loader.exec_module(mod)
         except Exception as e:
@@ -44,12 +47,12 @@ async def start_all_accounts():
                     c = TelegramClient(StringSession(s), api_id, api_hash)
                     await c.connect()
                     if await c.is_user_authorized():
-                        # تحميل الملفات لكل حساب يتم تشغيله
+                        # استدعاء الملفات لكل حساب مربوط
                         await load_plugins(c)
                         asyncio.create_task(c.run_until_disconnected())
                 except: pass
 
-# --- [3] نظام التحقق ---
+# --- [3] نظام التحقق من الاشتراك ---
 def check_vip(uid):
     if uid in SUDO_IDS: return True, "مطور السورس 👑", "∞"
     if not os.path.exists(USERS_DB): return False, "غير مفعّل ✘", "0"
@@ -78,7 +81,7 @@ def verify_code(user_input):
     if days: open(CODES_FILE, "w").writelines(new_l)
     return days
 
-# --- [4] كليشة الترحيب ---
+# --- [4] كليشة الترحيب في البوت ---
 def get_welcome_text(uid):
     is_vip, status, days = check_vip(uid)
     return (
@@ -91,9 +94,6 @@ def get_welcome_text(uid):
         "⦿ أهلاً بك في نظام التنصيب الذكي\n"
         "⦿ سورس نيثرون يوفر لك أقوى حماية\n"
         "⦿ ميزات حصرية وتشفير كامل للبيانات\n"
-        "◆━━━━━━━━━━━━━━━━━◆\n"
-        "◈➥ [𝑫𝑬𝑽〔المطور〕](https://t.me/NETH_RON)\n"
-        "◈➥ [𝑫𝑬𝑽〔المطور〕](https://t.me/xxnnxg)\n"
         "◆━━━━━━━━━━━━━━━━━◆"
     )
 
@@ -101,18 +101,12 @@ def get_welcome_text(uid):
 @bot.on(events.NewMessage(pattern='/start'))
 async def start(event):
     is_vip, _, _ = check_vip(event.sender_id)
-    url = random.choice(["https://t.me/NETH_RON", "https://t.me/xxnnxg"])
+    url = "https://t.me/xxnnxg"
     
     if is_vip:
-        btns = [
-            [Button.inline("📱 فتح لوحة التحكم", data="panel")],
-            [Button.url("🛒 شراء كود", url=url)]
-        ]
+        btns = [[Button.inline("📱 فتح لوحة التحكم", data="panel")], [Button.url("🛒 شراء كود", url=url)]]
     else:
-        btns = [
-            [Button.inline("🔑 تفعيل الاشتراك", data="activate")],
-            [Button.url("🛒 شراء كود", url=url)]
-        ]
+        btns = [[Button.inline("🔑 تفعيل الاشتراك", data="activate")], [Button.url("🛒 شراء كود", url=url)]]
     
     await event.respond(get_welcome_text(event.sender_id), buttons=btns, link_preview=False)
 
@@ -152,7 +146,7 @@ async def cb(event):
                 await client_session.sign_in(phone, c_res.text)
                 with open(SESSION_DB, "a") as f: f.write(client_session.session.save() + "\n")
                 
-                # تحميل الملفات للحساب الجديد فوراً
+                # تحميل الملفات للحساب الجديد وربطه بالتوكن فوراً
                 await load_plugins(client_session)
                 asyncio.create_task(client_session.run_until_disconnected())
                 await conv.send_message("✅ **تم الربط وتشغيل الأوامر بنجاح!**")
@@ -161,7 +155,7 @@ async def cb(event):
     elif data == "restart" and uid in SUDO_IDS:
         os.execl(sys.executable, sys.executable, *sys.argv)
 
-# --- [6] الانطلاق ---
+# --- [6] تشغيل المحرك ---
 if __name__ == '__main__':
     loop = asyncio.get_event_loop()
     loop.create_task(start_all_accounts())
