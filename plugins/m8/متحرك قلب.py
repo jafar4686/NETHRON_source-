@@ -1,18 +1,17 @@
-import __main__
+import __main__, asyncio
 from telethon import events
-import asyncio
+from plugins.settings_manager import get_anim_delay
 
 client = getattr(__main__, 'client', None)
 
 @client.on(events.NewMessage(outgoing=True))
-async def hearts_anim(event):
-    if "$قلب" in event.text:
+async def loading_anim(event):
+    if "$تحميل" in event.text:
         text = event.text
-        hearts = ["❤️", "🧡", "💛", "💚", "💙", "💜", "🖤", "🤍", "🤎"]
+        vortex = ["◜", "◝", "◞", "◟"]
         try:
             while True:
-                for h in hearts:
-                    animated_text = text.replace("$قلب", h)
-                    await event.edit(animated_text)
-                    await asyncio.sleep(0.5)
+                for f in vortex:
+                    await event.edit(text.replace("$تحميل", f))
+                    await asyncio.sleep(get_anim_delay())
         except: pass
