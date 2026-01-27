@@ -3,56 +3,69 @@ from telethon import events
 
 # استدعاء الكلاينت
 client = getattr(__main__, 'client', None)
-FAR_DB = "far_data.json"
+DB_DIR = "Far_Data"
 
-def load_data():
-    if not os.path.exists(FAR_DB):
-        return {"status": False, "msg": "مرحباً، المالك مشغول.", "warn_limit": 5, "users": {}}
+# التأكد من وجود المجلد
+if not os.path.exists(DB_DIR):
+    os.makedirs(DB_DIR)
+
+# دالة لجلب مسار الملف داخل المجلد الجديد
+async def get_db_path():
+    me = await client.get_me()
+    return os.path.join(DB_DIR, f"config_{me.id}.json")
+
+async def load_data():
+    path = await get_db_path()
+    if not os.path.exists(path):
+        return {"status": False, "msg": "مرحباً، المالك مشغول حالياً.", "warn_limit": 5, "users": {}}
     try:
-        with open(FAR_DB, "r") as f: return json.load(f)
-    except: return {"status": False, "msg": "مرحباً، المالك مشغول.", "warn_limit": 5, "users": {}}
+        with open(path, "r", encoding='utf-8') as f:
+            return json.load(f)
+    except:
+        return {"status": False, "msg": "مرحباً، المالك مشغول حالياً.", "warn_limit": 5, "users": {}}
 
-def save_data(data):
-    with open(FAR_DB, "w") as f: json.dump(data, f)
+async def save_data(data):
+    path = await get_db_path()
+    with open(path, "w", encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False, indent=4)
 
-# 1. أمر الإضافة
-@client.on(events.NewMessage(outgoing=True, pattern=r"^\.اضافة فار (.+)"))
+# 1. أمر إضافة الفار
+@client.on(events.NewMessage(outgoing=True, pattern=r"^\.اضافة فار ([\s\S]+)"))
 async def add_far(event):
     input_text = event.pattern_match.group(1)
-    data = load_data()
+    data = await load_data()
     
     match = re.search(r"\$warn/(\d+)", input_text)
     if match:
         limit = int(match.group(1))
         data["warn_limit"] = limit
-        data["msg"] = input_text.replace(f"/{limit}", "")
+        clean_msg = input_text.replace(f"/{limit}", "")
+        data["msg"] = clean_msg
     else:
         data["msg"] = input_text
         data["warn_limit"] = 5
         
-    save_data(data)
-    await event.edit(f"✅ **تم حفظ الفار بنجاح!**\nتحذيرات: {data['warn_limit']}")
+    await save_data(data)
+    await event.edit(f"✅ **تم الحفظ بنجاح!**\n📁 الملف: `{DB_DIR}/config_{ (await client.get_me()).id }.json`\n⚠️ التحذيرات: {data['warn_limit']}")
 
-# 2. أوامر التفعيل والإيقاف
+# 2. أوامر التحكم
 @client.on(events.NewMessage(outgoing=True, pattern=r"^\.(تفعيل|ايقاف) فار$"))
 async def toggle_far(event):
-    data = load_data()
+    data = await load_data()
     data["status"] = True if "تفعيل" in event.text else False
-    data["users"] = {} # تصفير القائمة
-    save_data(data)
-    status = "شغال ✅" if data["status"] else "مطفي ❌"
-    await event.edit(f"⚙️ **نظام الفار الآن: {status}**")
+    data["users"] = {} 
+    await save_data(data)
+    status_icon = "✅" if data["status"] else "❌"
+    await event.edit(f"⚙️ **نظام الفار: {'شغال ' + status_icon if data['status'] else 'مطفي ' + status_icon}**")
 
-# 3. محرك الرد التلقائي (المصلح)
+# 3. محرك الرد التلقائي
 @client.on(events.NewMessage(incoming=True))
 async def far_engine(event):
-    # نرد فقط على الرسائل الخاصة (Private)
     if not event.is_private: return
     
-    data = load_data()
+    data = await load_data()
     if not data.get("status"): return
     
-    # تجنب الرد على نفسك أو على البوتات
     me = await client.get_me()
     if event.sender_id == me.id: return
     
@@ -63,39 +76,41 @@ async def far_engine(event):
     users = data.get("users", {})
     user_warns = users.get(uid, 0)
     
-    # إذا وصل للحد المسموح يسكت السورس
     if user_warns >= data["warn_limit"]:
         return
 
-    # زيادة العداد وحفظه
     user_warns += 1
     users[uid] = user_warns
     data["users"] = users
-    save_data(data)
+    await save_data(data)
 
-    # تحضير الرسالة
     warn_left = data["warn_limit"] - user_warns
-    msg_to_send = data["msg"].replace("$warn", str(warn_left))
-    
-    # إضافة معلومات التواصل
-    final_text = (
-        f"{msg_to_send}\n\n"
-        f"👤 الأدمن: @xxnnxg\n"
-        f"✉️ أرسل رسالتك وسنرد عليك لاحقاً."
-    )
+    final_reply = data["msg"].replace("$warn", str(warn_left))
 
-    # إرسال الرد
     try:
-        await event.reply(final_text)
-    except Exception as e:
-        print(f"Error in Far System: {e}")
+        await event.reply(final_reply)
+    except: pass
 
-# 4. المنيو .م10
+# 4. حذف وحالة الفار
+@client.on(events.NewMessage(outgoing=True, pattern=r"^\.حذف الفار$"))
+async def del_far(event):
+    path = await get_db_path()
+    if os.path.exists(path):
+        os.remove(path)
+        await event.edit("🗑️ **تم مسح بيانات الفار نهائياً.**")
+    else:
+        await event.edit("⚠️ لا توجد بيانات مسجلة لهذا الحساب.")
+
+# 5. قائمة الأوامر .م10
 @client.on(events.NewMessage(outgoing=True, pattern=r"^\.م10$"))
 async def menu10(event):
     await event.edit(
-        "🛡️ **نظام الفار (الرد التلقائي):**\n"
-        "• `.اضافة فار` [الكليشة] $warn/5\n"
-        "• `.تفعيل فار` / `.ايقاف فار`\n"
-        "• `.حذف الفار`"
-)
+        "📂 **نظام الفار (إدارة المجلدات):**\n"
+        "•──────────────•\n"
+        "• `.اضافة فار` الكليشة مع $warn/العدد\n"
+        "• `.تفعيل فار` ↤ تشغيل\n"
+        "• `.ايقاف فار` ↤ إيقاف\n"
+        "• `.حذف الفار` ↤ مسح ملف الحساب\n"
+        "•──────────────•\n"
+        "📌 يتم خزن كل حساب في مجلد `Far_Data`."
+    )
