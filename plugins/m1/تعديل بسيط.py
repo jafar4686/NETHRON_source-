@@ -53,7 +53,7 @@ async def start_time(event):
     mode = "name" if choice == "اسم" else "bio"
     
     if time_tasks[mode]:
-        msg = await event.edit(f"⚠️ الوقت في {choice} شغال بالفعل!")
+        msg = await event.edit(f"◈〔 اكو وقت موجود حبيبي شغال بـ {choice} 〕◈")
         await asyncio.sleep(10)
         return await msg.delete()
     
@@ -73,13 +73,18 @@ async def start_time(event):
     )
     time_tasks[mode] = asyncio.create_task(update_time_loop(mode))
     
-    # مسح الرسالة بعد 10 ثواني
     await asyncio.sleep(10)
     await msg.delete()
 
 @client.on(events.NewMessage(pattern=r"^\.ايقاف وقتي$"))
 async def stop_time(event):
-    found = False
+    # التحقق أولاً قبل الأنيميشن
+    is_running = any(time_tasks.values())
+    if not is_running:
+        msg = await event.edit("◈〔 ماكو وقت شغال حتى اوقفة 〕◈")
+        await asyncio.sleep(10)
+        return await msg.delete()
+
     # --- أنيميشن الإيقاف ---
     for i in range(10): 
         f = VORTEX[i % 4]
@@ -90,18 +95,14 @@ async def stop_time(event):
         if time_tasks[k]:
             time_tasks[k].cancel()
             time_tasks[k] = None
-            found = True
     
-    if found:
-        msg = await event.edit(
-            "◆━━━━━━━━━━━━━━━━━◆\n"
-            "✅ تم إيقاف الوقت بنجاح\n"
-            "⦿ تم تنظيف الاسم/البايو\n"
-            "◆━━━━━━━━━━━━━━━━━◆"
-        )
-    else:
-        msg = await event.edit("⚠️ ماكو وقت شغال حتى أوقفه!")
+    # --- رسالة الإيقاف المطلوبة ---
+    msg = await event.edit(
+        "◆━━━━━━━━━━━━━━━━━◆\n"
+        "✅ اتوقف الوقت حبيبي روح شوف\n"
+        "⦿ تم تنظيف الحساب بنجاح\n"
+        "◆━━━━━━━━━━━━━━━━━◆"
+    )
     
-    # مسح الرسالة بعد 10 ثواني
     await asyncio.sleep(10)
     await msg.delete()
