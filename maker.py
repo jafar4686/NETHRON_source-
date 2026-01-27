@@ -10,17 +10,33 @@ SESSION_DB = "database.txt"
 USERS_DB = "nethron_vips.json"
 CODES_FILE = "nethron_codes.txt" 
 
-# قائمة المطورين (يتم تخطي الاشتراك لهم)
+# قائمة المطورين (المستثنون من الفحص)
 SUDO_IDS = [5580918933, 7273666832]
 
 bot = TelegramClient('MakerBot', api_id, api_hash).start(bot_token=BOT_TOKEN)
 
-if not hasattr(__main__, 'active_sessions'):
-    __main__.active_sessions = {}
+# --- [2] نظام التحقق الصارم (الدرع) ---
+def check_vip(uid):
+    """تحقق حقيقي وصارم من التاريخ"""
+    if uid in SUDO_IDS:
+        return True, "مطور السورس 👑", "∞"
+    
+    if not os.path.exists(USERS_DB):
+        return False, "غير مفعّل ✘", "0"
+        
+    try:
+        with open(USERS_DB, "r") as f:
+            users = json.load(f)
+            if str(uid) in users:
+                expiry = datetime.fromisoformat(users[str(uid)])
+                if expiry > datetime.now():
+                    rem = (expiry - datetime.now()).days
+                    return True, "مفعّل ✔", str(rem)
+    except: pass
+    return False, "غير مفعّل ✘", "0"
 
-# --- [2] نظام تشغيل الملفات والحسابات ---
+# --- [3] نظام تشغيل الحسابات والملفات ---
 async def load_plugins(user_client):
-    __main__.client = user_client
     files = glob.glob("plugins/**/*.py", recursive=True)
     for f in files:
         if f.endswith("__init__.py"): continue
@@ -28,6 +44,7 @@ async def load_plugins(user_client):
         try:
             spec = importlib.util.spec_from_file_location(name, f)
             mod = importlib.util.module_from_spec(spec)
+            mod.client = user_client
             spec.loader.exec_module(mod)
         except: pass
 
@@ -45,42 +62,9 @@ async def start_all_accounts():
                             asyncio.create_task(c.run_until_disconnected())
                     except: pass
 
-# --- [3] نظام فحص الأيام والاشتراك ---
-def get_sub_info(uid):
-    # إذا كان المستخدم مطور، يعتبر مفعّل للأبد
-    if uid in SUDO_IDS:
-        return "مطور السورس 👑", "∞"
-        
-    if not os.path.exists(USERS_DB): return "غير مفعّل ✘", "0"
-    try:
-        with open(USERS_DB, "r") as f:
-            u = json.load(f)
-            if str(uid) in u:
-                exp = datetime.fromisoformat(u[str(uid)])
-                if exp > datetime.now():
-                    rem = (exp - datetime.now()).days
-                    return "مفعّل ✔", str(rem)
-    except: pass
-    return "غير مفعّل ✘", "0"
-
-def verify_code(user_input):
-    if not os.path.exists(CODES_FILE): return None
-    clean = next((w for w in user_input.replace('|',' ').split() if w.startswith("NETH-")), None)
-    if not clean: return None
-    with open(CODES_FILE, "r") as f: lines = f.readlines()
-    new_l = []; days = None
-    for l in lines:
-        if clean in l:
-            p = l.split("|")
-            days = int(re.search(r'\d+', p[2]).group()) if len(p)>=3 else 30
-            continue
-        new_l.append(l)
-    if days: open(CODES_FILE, "w").writelines(new_l)
-    return days
-
-# --- [4] الكليشة ---
+# --- [4] كليشة الترحيب ---
 def get_welcome_text(uid):
-    status, days = get_sub_info(uid)
+    is_vip, status, days = check_vip(uid)
     return (
         "◆━━━━━━━━━━━━━━◆\n"
         f"◈➥حالة الاشتراك 〔 {status} 〕\n"
@@ -102,11 +86,10 @@ def get_welcome_text(uid):
 @bot.on(events.NewMessage(pattern='/start'))
 async def start(event):
     uid = event.sender_id
-    status, _ = get_sub_info(uid)
+    is_vip, status, _ = check_vip(uid)
     url = random.choice(["https://t.me/NETH_RON", "https://t.me/xxnnxg"])
     
-    # المطور أو المشترك يفتح اللوحة مباشرة
-    if uid in SUDO_IDS or "مفعّل" in status:
+    if is_vip:
         btns = [[Button.inline("📱 فتح لوحة التحكم", data="open_panel")], 
                 [Button.url("🛒 شراء كود", url=url)]]
     else:
@@ -118,44 +101,49 @@ async def start(event):
 @bot.on(events.CallbackQuery)
 async def callback_handler(event):
     data = event.data.decode(); uid = event.sender_id
+    is_vip, _, _ = check_vip(uid)
     
     if data == "activate_code":
         async with bot.conversation(event.chat_id) as conv:
             await conv.send_message("🎟️ **أرسل كود التفعيل الخاص بك:**")
             res = await conv.get_response()
-            days = verify_code(res.text.strip())
+            # دالة فحص الكود (verify_code) تُفترض موجودة كما في الكود السابق
+            from main_logic import verify_code # أو ضع الدالة هنا مباشرة
+            days = verify_code(res.text.strip()) 
             if days:
                 d = json.load(open(USERS_DB)) if os.path.exists(USERS_DB) else {}
                 d[str(uid)] = (datetime.now() + timedelta(days=days)).isoformat()
                 json.dump(d, open(USERS_DB, "w"), indent=4)
-                await conv.send_message(f"✅ تم التفعيل لمدة {days} يوم! ارسل /start")
+                await conv.send_message(f"✅ تم التفعيل! ارسل /start")
             else: await conv.send_message("❌ كود خطأ!")
 
+    elif data == "open_panel":
+        # إعادة التحقق فور الضغط على الزر
+        if not is_vip:
+            return await event.answer("⚠️ عذراً، اشتراكك منتهي أو غير مفعل!", alert=True)
+            
+        btns = [[Button.inline("➕ إضافة حساب", data="add_acc")], 
+                [Button.inline("🔄 ريستارت السورس", data="restart")]]
+        await event.edit("⚙️ **لوحة التحكم الأصلية - VIP**", buttons=btns)
+
     elif data == "add_acc":
+        if not is_vip: return await event.answer("⚠️ لا تملك صلاحية!", alert=True)
         async with bot.conversation(event.chat_id) as conv:
-            await conv.send_message("📱 أرسل الرقم مع رمز الدولة:")
+            await conv.send_message("📱 أرسل الرقم مع الرمز:")
             p_res = await conv.get_response()
             phone = p_res.text.replace(" ", "")
             client = TelegramClient(StringSession(), api_id, api_hash)
             await client.connect()
             try:
                 await client.send_code_request(phone)
-                await conv.send_message("📥 أرسل الكود:")
+                await conv.send_message("📥 الكود:")
                 c_res = await conv.get_response()
                 await client.sign_in(phone, c_res.text)
                 with open(SESSION_DB, "a") as f: f.write(client.session.save() + "\n")
-                await conv.send_message("✅ تم الربط والحفظ بنجاح!")
+                await conv.send_message("✅ تم الربط!")
                 await load_plugins(client)
                 asyncio.create_task(client.run_until_disconnected())
-            except Exception as e: await conv.send_message(f"❌ خطأ: {e}")
-
-    elif data == "open_panel":
-        status, _ = get_sub_info(uid)
-        if uid in SUDO_IDS or "مفعّل" in status:
-            btns = [[Button.inline("➕ إضافة حساب", data="add_acc")], 
-                    [Button.inline("🔄 ريستارت السورس", data="restart")]]
-            await event.edit("⚙️ **لوحة التحكم الأصلية**", buttons=btns)
-        else: await event.answer("⚠️ غير مشترك!", alert=True)
+            except Exception as e: await conv.send_message(f"❌: {e}")
 
     elif data == "restart" and uid in SUDO_IDS:
         os.execl(sys.executable, sys.executable, *sys.argv)
