@@ -8,6 +8,7 @@ import pytz # مكتبة المناطق الزمنية
 
 client = __main__.client
 time_tasks = {"name": None, "bio": None}
+VORTEX = ["◜", "◝", "◞", "◟"]
 
 # دالة لجلب وقت العراق حصراً
 def get_iraq_time():
@@ -17,9 +18,7 @@ def get_iraq_time():
 async def update_time_loop(mode):
     while True:
         try:
-            # استخدام توقيت العراق بدلاً من توقيت السيرفر
             current_time = get_iraq_time()
-            
             full = await client(GetFullUserRequest('me'))
             me = full.users[0]
             bio_text = full.full_user.about or "𝑆𝑂𝑈𝑅𝐶𝐸 𝑁𝐸𝑇𝐻𝑅𝑂𝑁"
@@ -37,7 +36,6 @@ async def update_time_loop(mode):
             
             await asyncio.sleep(60)
         except asyncio.CancelledError:
-            # الكود الخاص بالإلغاء يبقى كما هو
             full = await client(GetFullUserRequest('me'))
             if mode == "name":
                 clean_name = full.users[0].first_name.split(' | ')[0]
@@ -47,24 +45,42 @@ async def update_time_loop(mode):
                     clean_bio = full.full_user.about.split(' | ')[0]
                     await client(UpdateProfileRequest(about=clean_bio))
             break
-        except Exception as e:
-            print(f"Error: {e}")
+        except:
             await asyncio.sleep(60)
 
 @client.on(events.NewMessage(pattern=r"^\.وقتي (اسم|بايو)$"))
 async def start_time(event):
     choice = event.pattern_match.group(1)
     mode = "name" if choice == "اسم" else "bio"
+    
     if time_tasks[mode]:
         return await event.edit(f"⚠️ الوقت في {choice} شغال بالفعل!")
     
-    await event.edit(f"✅ تم تفعيل الوقت في {choice}\nسيتحدث بتوقيت العراق 🇮🇶")
+    # --- أنيميشن التحميل ---
+    for i in range(8):  # يكرر الدوامة 8 مرات (حوالي 4 ثواني)
+        await event.edit(f"صبرك {VORTEX[i % 4]} 〔جاي يتفعل الوقت〕")
+        await asyncio.sleep(0.5)
+    
+    # --- رسالة التأكيد والزخرفة ---
+    await event.edit(
+        "◆━━━━━━━━━━━━━━━━━◆\n"
+        "✅ اشتغل الوقت ضلعي روح شوف\n"
+        f"⦿ النوع: {choice}\n"
+        "⦿ التوقيت: العراق 🇮🇶\n"
+        "◆━━━━━━━━━━━━━━━━━◆"
+    )
     time_tasks[mode] = asyncio.create_task(update_time_loop(mode))
 
 @client.on(events.NewMessage(pattern=r"^\.ايقاف وقتي$"))
 async def stop_time(event):
+    found = False
     for k in time_tasks:
         if time_tasks[k]:
             time_tasks[k].cancel()
             time_tasks[k] = None
-    await event.edit("✅ تم إيقاف الوقت وتنظيف الحساب بنجاح.")
+            found = True
+    
+    if found:
+        await event.edit("✅ تم إيقاف الوقت وتنظيف الحساب بنجاح.")
+    else:
+        await event.edit("⚠️ ماكو وقت شغال حتى أوقفه!")
