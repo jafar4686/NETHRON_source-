@@ -1,98 +1,88 @@
 import __main__, asyncio, json, os
-from telethon import events
+from telethon import events, Button
 
+# استدعاء الكلاينت وتوكن البوت المساعد من الميكر مباشرة
 client = getattr(__main__, 'client', None)
-REPLIES_FILE = "replies.json"
-SETTINGS_FILE = "reply_settings.json"
+tgbot = getattr(__main__, 'tgbot', None) 
 
-# دالات مساعدة
-def get_data(file, default):
-    if not os.path.exists(file): return default
-    with open(file, "r") as f: return json.load(f)
+FAR_DB = "far_config.json"
 
-def save_data(file, data):
-    with open(file, "w") as f: json.dump(data, f)
+def load_data():
+    if not os.path.exists(FAR_DB):
+        return {"status": False, "msg": "", "limit": 3, "users": {}}
+    with open(FAR_DB, "r") as f: return json.load(f)
 
-@client.on(events.NewMessage(outgoing=True, pattern=r"^\.اضافة رد (.+) (.+)"))
-async def add_reply(event):
-    word = event.pattern_match.group(1)
-    response = event.pattern_match.group(2)
-    data = get_data(REPLIES_FILE, {})
-    data[word] = response
-    save_data(REPLIES_FILE, data)
-    await event.edit(f"✅ تم إضافة الرد:\n• الكلمة: {word}\n• الرد: {response}")
+def save_data(data):
+    with open(FAR_DB, "w") as f: json.dump(data, f)
 
-@client.on(events.NewMessage(outgoing=True, pattern=r"^\.حذف رد (.+)"))
-async def del_reply(event):
-    word = event.pattern_match.group(1)
-    data = get_data(REPLIES_FILE, {})
-    if word in data:
-        del data[word]
-        save_data(REPLIES_FILE, data)
-        await event.edit(f"🗑️ تم حذف رد: {word}")
-    else:
-        await event.edit("⚠️ الرد غير موجود.")
-
-@client.on(events.NewMessage(outgoing=True, pattern=r"^\.رد عام (.+)"))
-async def set_general(event):
+# 1. أوامر التحكم (تنكتب بالحساب الرسمي)
+@client.on(events.NewMessage(outgoing=True, pattern=r"^\.اضافة فار (.+)"))
+async def add_far(event):
     msg = event.pattern_match.group(1)
-    settings = get_data(SETTINGS_FILE, {"status": False, "general": ""})
-    settings["general"] = msg
-    save_data(SETTINGS_FILE, settings)
-    await event.edit(f"📢 تم ضبط الرد العام:\n• النص: {msg}")
+    data = load_data()
+    data["msg"] = msg
+    save_data(data)
+    await event.edit("✅ **تم حفظ كليشة الفار بنجاح.**\n• لا تنسى استخدام $warn للتحذيرات.")
 
-@client.on(events.NewMessage(outgoing=True, pattern=r"^\.(ت|ايقاف) الردود$"))
-async def toggle_replies(event):
-    cmd = event.text
-    settings = get_data(SETTINGS_FILE, {"status": False, "general": ""})
-    settings["status"] = True if "ت" in cmd else False
-    save_data(SETTINGS_FILE, settings)
-    status_text = "✅ تشغيل" if settings["status"] else "❌ إيقاف"
-    await event.edit(f"⚙️ تم {status_text} نظام الردود")
+@client.on(events.NewMessage(outgoing=True, pattern=r"^\.(تفعيل|ايقاف) الفار$"))
+async def toggle_far(event):
+    data = load_data()
+    data["status"] = True if "تفعيل" in event.text else False
+    save_data(data)
+    status = "شغال ✅" if data["status"] else "معطل ❌"
+    await event.edit(f"⚙️ **نظام الفار الآن: {status}**")
 
-# --- محرك الردود الذكي ---
-@client.on(events.NewMessage(incoming=True))
-async def reply_handler(event):
-    settings = get_data(SETTINGS_FILE, {"status": False, "general": ""})
-    if not settings["status"]: return
-    
-    replies = get_data(REPLIES_FILE, {})
-    user_msg = event.text
-    
-    # 1. الأولوية للرد التلقائي (كلمة محددة)
-    if user_msg in replies:
-        await event.reply(replies[user_msg])
-    # 2. إذا ماكو رد محدد، يرد بالرد العام (إذا موجود)
-    elif settings["general"]:
-        await event.reply(settings["general"])
+@client.on(events.NewMessage(outgoing=True, pattern=r"^\.حذف فار$"))
+async def del_far(event):
+    if os.path.exists(FAR_DB): os.remove(FAR_DB)
+    await event.edit("🗑️ **تم حذف بيانات الفار بالكامل.**")
 
-# --- قائمة الردود .م9 ---
-@client.on(events.NewMessage(outgoing=True, pattern=r"^\.م9$"))
-async def menu9(event):
-    klisha = (
-        "★────────☭────────★\n"
-        "   ☭ • 𝑆𝑂𝑈𝑅𝐶𝐸 𝑁𝐸𝑇𝐻𝑅𝑂𝑁 • ☭\n"
-        "★────────☭────────★\n\n"
-        "⚙️ أوامر الردود التلقائية:\n"
-        "• `.اضافة رد` [الكلمة] [الرد]\n"
-        "• `.حذف رد` [الكلمة]\n"
-        "• `.رد عام` [نص الرد لكل الناس]\n"
-        "• `.قائمة الردود` ➥ عرض ردودك\n"
-        "• `.ت الردود` / `.ايقاف الردود` \n\n"
-        "★────────☭────────★"
-    )
-    await event.edit(klisha)
+# 2. محرك الحماية (يرد على الناس بالخاص)
+@client.on(events.NewMessage(incoming=True, func=lambda e: e.is_private))
+async def far_engine(event):
+    data = load_data()
+    me = await client.get_me()
+    if not data["status"] or event.sender_id == me.id or event.is_bot: return
+    
+    uid = str(event.sender_id)
+    u_data = data["users"].get(uid, 0)
+    
+    # إذا تجاوز حد التحذيرات
+    if u_data >= data["limit"]:
+        return # هنا الشخص مكتوم تلقائياً لأن السورس ما راح يرد عليه بعد
 
-@client.on(events.NewMessage(outgoing=True, pattern=r"^\.قائمة الردود$"))
-async def list_replies(event):
-    replies = get_data(REPLIES_FILE, {})
-    if not replies: return await event.edit("⚠️ لا توجد ردود مضافة.")
-    
-    msg = "◜ جاري تحميل قائمة الردود... ◝"
-    await event.edit(msg)
-    await asyncio.sleep(1.5) # تأثير التحميل اللي ردته
-    
-    out = "📋 **قائمة الردود المضافة:**\n\n"
-    for word, resp in replies.items():
-        out += f"• {word} ↤ {resp}\n"
-    await event.edit(out)
+    u_data += 1
+    data["users"][uid] = u_data
+    save_data(data)
+
+    if u_data <= data["limit"]:
+        warn_left = data["limit"] - u_data
+        # استبدال متغير التحذير بالنص
+        final_msg = data["msg"].replace("$warn", str(warn_left))
+        
+        # الأزرار الشفافة عبر البوت المساعد
+        buttons = [
+            [Button.inline("طلب تحدث 💬", data=f"ask_{uid}")],
+            [Button.url("مراسلة الأدمن 👤", url="t.me/xxnnxg")],
+            [Button.inline("إرسال رسالة واحدة ✉️", data=f"once_{uid}")]
+        ]
+        
+        try:
+            await tgbot.send_message(event.chat_id, final_msg, buttons=buttons)
+        except:
+            await event.reply(final_msg)
+
+# 3. معالج ضغطات الأزرار (عبر التوكن)
+@tgbot.on(events.CallbackQuery)
+async def buttons_callback(event):
+    data = event.data.decode()
+    uid = event.sender_id
+    me = await client.get_me()
+
+    if data.startswith("ask_"):
+        await event.answer("تم إرسال طلبك.. انتظر الرد.", alert=True)
+        await client.send_message(me.id, f"👤 المستخدم [{uid}](tg://user?id={uid}) يطلب التحدث معك.")
+
+    elif data.startswith("once_"):
+        await event.edit("✉️ **اكتب رسالتك الآن وسيتم توجيهها للمالك فوراً.**")
+        # يتم توجيه الرسالة القادمة للمالك (اختياري)
