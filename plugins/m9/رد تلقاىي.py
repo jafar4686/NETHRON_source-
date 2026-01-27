@@ -1,91 +1,101 @@
 import __main__, asyncio, json, os, re
 from telethon import events
 
-# استدعاء الكلاينت من المحرك الأساسي
+# استدعاء الكلاينت
 client = getattr(__main__, 'client', None)
 FAR_DB = "far_data.json"
 
 def load_data():
     if not os.path.exists(FAR_DB):
-        return {"status": False, "msg": "", "warn_limit": 10, "users": {}}
-    with open(FAR_DB, "r") as f: return json.load(f)
+        return {"status": False, "msg": "مرحباً، المالك مشغول.", "warn_limit": 5, "users": {}}
+    try:
+        with open(FAR_DB, "r") as f: return json.load(f)
+    except: return {"status": False, "msg": "مرحباً، المالك مشغول.", "warn_limit": 5, "users": {}}
 
 def save_data(data):
     with open(FAR_DB, "w") as f: json.dump(data, f)
 
-# 1. أمر الإضافة مع تحديد عدد التحذيرات تلقائياً
+# 1. أمر الإضافة
 @client.on(events.NewMessage(outgoing=True, pattern=r"^\.اضافة فار (.+)"))
 async def add_far(event):
     input_text = event.pattern_match.group(1)
     data = load_data()
     
-    # البحث عن رقم التحذيرات بعد السلاش مثل $warn/5
     match = re.search(r"\$warn/(\d+)", input_text)
     if match:
-        data["warn_limit"] = int(match.group(1))
-        # تنظيف الكليشة من الرقم لإبقائها نظيفة عند الرد
-        data["msg"] = input_text.replace(f"/{match.group(1)}", "")
+        limit = int(match.group(1))
+        data["warn_limit"] = limit
+        data["msg"] = input_text.replace(f"/{limit}", "")
     else:
         data["msg"] = input_text
-        data["warn_limit"] = 10 # الافتراضي
+        data["warn_limit"] = 5
         
     save_data(data)
-    await event.edit(f"✅ **تم حفظ كليشة الفار:**\n• عدد التحذيرات: {data['warn_limit']}\n• النص: {data['msg']}")
+    await event.edit(f"✅ **تم حفظ الفار بنجاح!**\nتحذيرات: {data['warn_limit']}")
 
-# 2. أوامر التحكم
+# 2. أوامر التفعيل والإيقاف
 @client.on(events.NewMessage(outgoing=True, pattern=r"^\.(تفعيل|ايقاف) فار$"))
 async def toggle_far(event):
     data = load_data()
     data["status"] = True if "تفعيل" in event.text else False
-    data["users"] = {} # تصفير القائمة لبدء التحذير من جديد
+    data["users"] = {} # تصفير القائمة
     save_data(data)
-    await event.edit(f"⚙️ **نظام الفار الآن: {'شغال ✅' if data['status'] else 'مطفي ❌'}**")
+    status = "شغال ✅" if data["status"] else "مطفي ❌"
+    await event.edit(f"⚙️ **نظام الفار الآن: {status}**")
 
-@client.on(events.NewMessage(outgoing=True, pattern=r"^\.حذف الفار$"))
-async def del_far(event):
-    if os.path.exists(FAR_DB): os.remove(FAR_DB)
-    await event.edit("🗑️ **تم حذف إعدادات الفار بالكامل.**")
-
-# 3. محرك الرد والتحذير (الذكاء الاصطناعي للفار)
-@client.on(events.NewMessage(incoming=True, func=lambda e: e.is_private))
+# 3. محرك الرد التلقائي (المصلح)
+@client.on(events.NewMessage(incoming=True))
 async def far_engine(event):
+    # نرد فقط على الرسائل الخاصة (Private)
+    if not event.is_private: return
+    
     data = load_data()
+    if not data.get("status"): return
+    
+    # تجنب الرد على نفسك أو على البوتات
     me = await client.get_me()
+    if event.sender_id == me.id: return
     
-    if not data["status"] or event.sender_id == me.id or event.is_bot: return
-    
-    uid = str(event.sender_id)
-    user_warns = data["users"].get(uid, 0)
-    
-    # إذا تجاوز الحد المسموح
-    if user_warns >= data["warn_limit"]:
-        return # يتوقف السورس عن الرد (كتم)
+    sender = await event.get_sender()
+    if sender and getattr(sender, 'bot', False): return
 
-    # زيادة العداد
+    uid = str(event.sender_id)
+    users = data.get("users", {})
+    user_warns = users.get(uid, 0)
+    
+    # إذا وصل للحد المسموح يسكت السورس
+    if user_warns >= data["warn_limit"]:
+        return
+
+    # زيادة العداد وحفظه
     user_warns += 1
-    data["users"][uid] = user_warns
+    users[uid] = user_warns
+    data["users"] = users
     save_data(data)
 
-    # الرد بالكليشة
+    # تحضير الرسالة
     warn_left = data["warn_limit"] - user_warns
-    # استبدال المتغير بالعدد المتبقي
-    final_reply = data["msg"].replace("$warn", str(warn_left))
+    msg_to_send = data["msg"].replace("$warn", str(warn_left))
     
-    # إضافة تعليمات التواصل كـ نص (لأنها أسهل برمجياً وأضمن)
-    final_reply += f"\n\n👤 لمراسلة الأدمن: @xxnnxg\n✉️ اترك رسالتك الآن وسيتم الرد عليك."
-    
-    await event.reply(final_reply)
+    # إضافة معلومات التواصل
+    final_text = (
+        f"{msg_to_send}\n\n"
+        f"👤 الأدمن: @xxnnxg\n"
+        f"✉️ أرسل رسالتك وسنرد عليك لاحقاً."
+    )
 
-# 4. قائمة الأوامر .م10
+    # إرسال الرد
+    try:
+        await event.reply(final_text)
+    except Exception as e:
+        print(f"Error in Far System: {e}")
+
+# 4. المنيو .م10
 @client.on(events.NewMessage(outgoing=True, pattern=r"^\.م10$"))
 async def menu10(event):
-    text = (
-        "🛡️ **قائمة نظام الفار (الحماية):**\n"
-        "•──────────────•\n"
-        "• `.اضافة فار` [الكليشة] $warn/10\n"
-        "• `.تفعيل فار` / `.ايقاف فار` \n"
-        "• `.حذف الفار` \n"
-        "•──────────────•\n"
-        "💡 **ملاحظة:** ضع $warn/ متبوعاً برقم لتحديد عدد التحذيرات."
-    )
-    await event.edit(text)
+    await event.edit(
+        "🛡️ **نظام الفار (الرد التلقائي):**\n"
+        "• `.اضافة فار` [الكليشة] $warn/5\n"
+        "• `.تفعيل فار` / `.ايقاف فار`\n"
+        "• `.حذف الفار`"
+)
