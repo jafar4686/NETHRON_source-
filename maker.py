@@ -11,9 +11,10 @@ USERS_DB = "nethron_vips.json"
 CODES_FILE = "nethron_codes.txt" 
 SUDO_IDS = [5580918933, 7273666832]
 
+# تشغيل البوت المساعد (المسؤول عن الأزرار)
 bot = TelegramClient('MakerBot', api_id, api_hash).start(bot_token=BOT_TOKEN)
 
-# --- [2] نظام تشغيل الأوامر (إصلاح AttributeError) ---
+# --- [2] نظام تشغيل الأوامر (تعديل الربط والحقن) ---
 async def load_plugins(user_client):
     files = glob.glob("plugins/**/*.py", recursive=True)
     for f in files:
@@ -22,8 +23,14 @@ async def load_plugins(user_client):
         try:
             spec = importlib.util.spec_from_file_location(name, f)
             mod = importlib.util.module_from_spec(spec)
+            
+            # --- ربط الكلاينت وتوكن البوت المساعد بملفات الـ plugins ---
             mod.client = user_client
+            mod.tgbot = bot  # تمرير البوت المساعد لاستخدامه في الأزرار
             __main__.client = user_client
+            __main__.tgbot = bot
+            # -------------------------------------------------------
+            
             spec.loader.exec_module(mod)
         except Exception as e:
             print(f"❌ فشل تحميل {name}: {e}")
@@ -37,6 +44,7 @@ async def start_all_accounts():
                     c = TelegramClient(StringSession(s), api_id, api_hash)
                     await c.connect()
                     if await c.is_user_authorized():
+                        # تحميل الملفات لكل حساب يتم تشغيله
                         await load_plugins(c)
                         asyncio.create_task(c.run_until_disconnected())
                 except: pass
@@ -95,7 +103,6 @@ async def start(event):
     is_vip, _, _ = check_vip(event.sender_id)
     url = random.choice(["https://t.me/NETH_RON", "https://t.me/xxnnxg"])
     
-    # هنا رجعت زر الشراء للحالتين (مفعل أو غير مفعل)
     if is_vip:
         btns = [
             [Button.inline("📱 فتح لوحة التحكم", data="panel")],
@@ -137,22 +144,25 @@ async def cb(event):
             try:
                 p_res = await conv.get_response()
                 phone = p_res.text.replace(" ", "")
-                client = TelegramClient(StringSession(), api_id, api_hash)
-                await client.connect()
-                await client.send_code_request(phone)
+                client_session = TelegramClient(StringSession(), api_id, api_hash)
+                await client_session.connect()
+                await client_session.send_code_request(phone)
                 await conv.send_message("📥 **أرسل الكود:**")
                 c_res = await conv.get_response()
-                await client.sign_in(phone, c_res.text)
-                with open(SESSION_DB, "a") as f: f.write(client.session.save() + "\n")
-                await load_plugins(client)
-                asyncio.create_task(client.run_until_disconnected())
-                await conv.send_message("✅ **تم الربط وتشغيل الأوامر!**")
+                await client_session.sign_in(phone, c_res.text)
+                with open(SESSION_DB, "a") as f: f.write(client_session.session.save() + "\n")
+                
+                # تحميل الملفات للحساب الجديد فوراً
+                await load_plugins(client_session)
+                asyncio.create_task(client_session.run_until_disconnected())
+                await conv.send_message("✅ **تم الربط وتشغيل الأوامر بنجاح!**")
             except Exception as e: await conv.send_message(f"❌ خطأ: {e}")
 
     elif data == "restart" and uid in SUDO_IDS:
         os.execl(sys.executable, sys.executable, *sys.argv)
 
 # --- [6] الانطلاق ---
-loop = asyncio.get_event_loop()
-loop.create_task(start_all_accounts())
-bot.run_until_disconnected()
+if __name__ == '__main__':
+    loop = asyncio.get_event_loop()
+    loop.create_task(start_all_accounts())
+    bot.run_until_disconnected()
