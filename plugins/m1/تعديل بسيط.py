@@ -53,16 +53,18 @@ async def start_time(event):
     mode = "name" if choice == "اسم" else "bio"
     
     if time_tasks[mode]:
-        return await event.edit(f"⚠️ الوقت في {choice} شغال بالفعل!")
+        msg = await event.edit(f"⚠️ الوقت في {choice} شغال بالفعل!")
+        await asyncio.sleep(10)
+        return await msg.delete()
     
-    # --- أنيميشن الدوامة المزدوجة ---
+    # --- أنيميشن التفعيل ---
     for i in range(10): 
         f = VORTEX[i % 4]
         await event.edit(f"{f} 〔صبرك جاي يتفعل〕 {f}")
         await asyncio.sleep(0.4)
     
-    # --- رسالة التأكيد النهائية ---
-    await event.edit(
+    # --- رسالة التأكيد ---
+    msg = await event.edit(
         "◆━━━━━━━━━━━━━━━━━◆\n"
         "✅ اشتغل الوقت ضلعي روح شوف\n"
         f"⦿ النوع: {choice}\n"
@@ -70,10 +72,20 @@ async def start_time(event):
         "◆━━━━━━━━━━━━━━━━━◆"
     )
     time_tasks[mode] = asyncio.create_task(update_time_loop(mode))
+    
+    # مسح الرسالة بعد 10 ثواني
+    await asyncio.sleep(10)
+    await msg.delete()
 
 @client.on(events.NewMessage(pattern=r"^\.ايقاف وقتي$"))
 async def stop_time(event):
     found = False
+    # --- أنيميشن الإيقاف ---
+    for i in range(10): 
+        f = VORTEX[i % 4]
+        await event.edit(f"{f} 〔صبرك جاي يتوقف〕 {f}")
+        await asyncio.sleep(0.4)
+
     for k in time_tasks:
         if time_tasks[k]:
             time_tasks[k].cancel()
@@ -81,6 +93,15 @@ async def stop_time(event):
             found = True
     
     if found:
-        await event.edit("✅ تم إيقاف الوقت وتنظيف الحساب بنجاح.")
+        msg = await event.edit(
+            "◆━━━━━━━━━━━━━━━━━◆\n"
+            "✅ تم إيقاف الوقت بنجاح\n"
+            "⦿ تم تنظيف الاسم/البايو\n"
+            "◆━━━━━━━━━━━━━━━━━◆"
+        )
     else:
-        await event.edit("⚠️ ماكو وقت شغال حتى أوقفه!")
+        msg = await event.edit("⚠️ ماكو وقت شغال حتى أوقفه!")
+    
+    # مسح الرسالة بعد 10 ثواني
+    await asyncio.sleep(10)
+    await msg.delete()
