@@ -6,11 +6,15 @@ from telethon.tl.functions.users import GetFullUserRequest
 
 client = getattr(__main__, 'client', None)
 VORTEX = ["◜", "◝", "◞", "◟"]
-TIME_DIR = os.path.join(os.getcwd(), "Time_Data")
+
+# المسار المباشر كما في الصورة مالتك
+TIME_DIR = "/home/container/Time_Data"
 time_tasks = {"name": None, "bio": None}
 
+# التأكد من وجود المجلد
 if not os.path.exists(TIME_DIR):
-    os.makedirs(TIME_DIR)
+    try: os.makedirs(TIME_DIR)
+    except: pass
 
 async def get_acc_file():
     me = await client.get_me()
@@ -18,7 +22,7 @@ async def get_acc_file():
 
 async def save_cfg(mode, status):
     path = await get_acc_file()
-    data = {}
+    data = {"name": False, "bio": False}
     if os.path.exists(path):
         try:
             with open(path, "r") as f: data = json.load(f)
@@ -59,7 +63,8 @@ async def time_worker(mode):
         except: await asyncio.sleep(60)
 
 async def startup_engine():
-    await asyncio.sleep(10)
+    # ننتظر شوي لحد ما الحساب يسوي اتصال كامل
+    await asyncio.sleep(15)
     try:
         cfg = await load_cfg()
         if cfg.get("name"):
@@ -68,6 +73,7 @@ async def startup_engine():
             time_tasks["bio"] = asyncio.create_task(time_worker("bio"))
     except: pass
 
+# تشغيل المحرك التلقائي
 client.loop.create_task(startup_engine())
 
 @client.on(events.NewMessage(outgoing=True, pattern=r"^\.وقتي (اسم|بايو)$"))
@@ -78,7 +84,7 @@ async def start_t(event):
     
     if cfg.get(mode):
         msg = await event.edit(f"◈〔 اكو وقت موجود حبيبي شغال بـ {choice} 〕◈")
-        await asyncio.sleep(10)
+        await asyncio.sleep(5)
         return await msg.delete()
     
     for i in range(10): 
@@ -96,7 +102,7 @@ async def start_t(event):
         "⦿ التوقيت: العراق 🇮🇶\n"
         "◆━━━━━━━━━━━━━━━━━◆"
     )
-    await asyncio.sleep(10)
+    await asyncio.sleep(5)
     await msg.delete()
 
 @client.on(events.NewMessage(outgoing=True, pattern=r"^\.ايقاف وقتي$"))
@@ -104,7 +110,7 @@ async def stop_t(event):
     cfg = await load_cfg()
     if not any(cfg.values()):
         msg = await event.edit("◈〔 ماكو وقت شغال حتى اوقفة 〕◈")
-        await asyncio.sleep(10)
+        await asyncio.sleep(5)
         return await msg.delete()
 
     for i in range(10): 
@@ -118,8 +124,12 @@ async def stop_t(event):
     for k in time_tasks:
         if time_tasks[k]: time_tasks[k].cancel(); time_tasks[k] = None
     
-    full = await client(GetFullUserRequest('me'))
-    await client(UpdateProfileRequest(first_name=full.users[0].first_name.split(' | ')[0]))
+    # تنظيف فوري للاسم
+    try:
+        full = await client(GetFullUserRequest('me'))
+        clean_name = full.users[0].first_name.split(' | ')[0]
+        await client(UpdateProfileRequest(first_name=clean_name))
+    except: pass
     
     msg = await event.edit(
         "◆━━━━━━━━━━━━━━━━━◆\n"
@@ -127,5 +137,5 @@ async def stop_t(event):
         "⦿ تم تنظيف الحساب بنجاح\n"
         "◆━━━━━━━━━━━━━━━━━◆"
     )
-    await asyncio.sleep(10)
+    await asyncio.sleep(5)
     await msg.delete()
