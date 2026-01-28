@@ -9,7 +9,7 @@ TIME_DIR = "Time_Data"
 time_tasks = {"name": None, "bio": None}
 VORTEX = ["◜", "◝", "◞", "◟"]
 
-# إنشاء المجلد إذا لم يكن موجوداً
+# إنشاء المجلد في بداية التشغيل
 if not os.path.exists(TIME_DIR):
     os.makedirs(TIME_DIR)
 
@@ -21,12 +21,18 @@ async def get_time_db():
 # دالة الحفظ والقراءة
 async def load_settings():
     path = await get_time_db()
-    if not os.path.exists(path): return {"name": False, "bio": False}
-    with open(path, "r") as f: return json.load(f)
+    if not os.path.exists(path): 
+        return {"name": False, "bio": False}
+    try:
+        with open(path, "r", encoding='utf-8') as f: 
+            return json.load(f)
+    except:
+        return {"name": False, "bio": False}
 
 async def save_settings(data):
     path = await get_time_db()
-    with open(path, "w") as f: json.dump(data, f)
+    with open(path, "w", encoding='utf-8') as f: 
+        json.dump(data, f, ensure_ascii=False, indent=4)
 
 def get_iraq_time():
     iraq_tz = pytz.timezone('Asia/Baghdad')
@@ -35,9 +41,10 @@ def get_iraq_time():
 async def update_time_loop(mode):
     while True:
         try:
-            # التحقق إذا كان الوضع لا يزال مفعلاً في الخزن
+            # التحقق من حالة التشغيل من الملف
             settings = await load_settings()
-            if not settings.get(mode): break
+            if not settings.get(mode): 
+                break
 
             current_time = get_iraq_time()
             full = await client(GetFullUserRequest('me'))
@@ -57,32 +64,25 @@ async def update_time_loop(mode):
             
             await asyncio.sleep(60)
         except asyncio.CancelledError:
-            # تنظيف الحساب عند الإيقاف
-            full = await client(GetFullUserRequest('me'))
-            if mode == "name":
-                clean_name = full.users[0].first_name.split(' | ')[0]
-                await client(UpdateProfileRequest(first_name=clean_name))
-            elif mode == "bio":
-                if full.full_user.about:
-                    clean_bio = full.full_user.about.split(' | ')[0]
-                    await client(UpdateProfileRequest(about=clean_bio))
             break
-        except:
+        except Exception as e:
+            print(f"Error in time loop: {e}")
             await asyncio.sleep(60)
 
 # --- نظام التشغيل التلقائي عند بدء السورس ---
 async def auto_start_time():
+    await asyncio.sleep(15) # انتظار استقرار البوت
     try:
-        await asyncio.sleep(15) # انتظار استقرار الاتصال
         settings = await load_settings()
-        for mode in ["name", "bio"]:
-            if settings.get(mode):
-                time_tasks[mode] = asyncio.create_task(update_time_loop(mode))
-    except: pass
+        if settings.get("name"):
+            time_tasks["name"] = asyncio.create_task(update_time_loop("name"))
+        if settings.get("bio"):
+            time_tasks["bio"] = asyncio.create_task(update_time_loop("bio"))
+    except:
+        pass
 
-# تشغيل الفحص التلقائي
-loop = asyncio.get_event_loop()
-loop.create_task(auto_start_time())
+# تفعيل التشغيل التلقائي
+asyncio.create_task(auto_start_time())
 
 @client.on(events.NewMessage(outgoing=True, pattern=r"^\.وقتي (اسم|بايو)$"))
 async def start_time(event):
@@ -95,18 +95,18 @@ async def start_time(event):
         await asyncio.sleep(10)
         return await msg.delete()
     
-    # --- أنيميشن التفعيل القديم مالتك ---
+    # --- أنيميشن التفعيل القديم ---
     for i in range(10): 
         f = VORTEX[i % 4]
         await event.edit(f"{f} 〔صبرك جاي يتفعل〕 {f}")
         await asyncio.sleep(0.4)
     
-    # حفظ الإعداد وتشغيل المهمة
+    # حفظ الإعداد في الملف وتشغيل المهمة
     settings[mode] = True
     await save_settings(settings)
     time_tasks[mode] = asyncio.create_task(update_time_loop(mode))
     
-    # --- رسالة التأكيد القديمة مالتك ---
+    # --- رسالة التأكيد القديمة ---
     msg = await event.edit(
         "◆━━━━━━━━━━━━━━━━━◆\n"
         "✅ اشتغل الوقت ضلعي روح شوف\n"
@@ -126,7 +126,7 @@ async def stop_time(event):
         await asyncio.sleep(10)
         return await msg.delete()
 
-    # --- أنيميشن الإيقاف القديم مالتك ---
+    # --- أنيميشن الإيقاف القديم ---
     for i in range(10): 
         f = VORTEX[i % 4]
         await event.edit(f"{f} 〔صبرك جاي يتوقف〕 {f}")
@@ -141,7 +141,18 @@ async def stop_time(event):
     
     await save_settings(settings)
     
-    # --- رسالة الإيقاف القديمة مالتك ---
+    # تنظيف الحساب من الوقت فوراً
+    try:
+        full = await client(GetFullUserRequest('me'))
+        clean_name = full.users[0].first_name.split(' | ')[0]
+        await client(UpdateProfileRequest(first_name=clean_name))
+        if full.full_user.about:
+            clean_bio = full.full_user.about.split(' | ')[0]
+            await client(UpdateProfileRequest(about=clean_bio))
+    except:
+        pass
+    
+    # --- رسالة الإيقاف القديمة ---
     msg = await event.edit(
         "◆━━━━━━━━━━━━━━━━━◆\n"
         "✅ اتوقف الوقت حبيبي روح شوف\n"
