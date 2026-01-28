@@ -1,11 +1,10 @@
 import __main__, asyncio, json, os, re
 from telethon import events, functions, types
 
-# استدعاء الكلاينت من المحرك الأساسي
+# استدعاء الكلاينت
 client = getattr(__main__, 'client', None)
 DB_DIR = "Far_Data"
 
-# التأكد من وجود المجلد الخاص بالبيانات
 if not os.path.exists(DB_DIR):
     os.makedirs(DB_DIR)
 
@@ -28,7 +27,7 @@ async def save_data(data):
     with open(path, "w", encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
 
-# --- [ 1. أوامر الإعدادات ] ---
+# 1. أوامر الإعدادات
 @client.on(events.NewMessage(outgoing=True, pattern=r"^\.اضافة فار ([\s\S]+)"))
 async def add_far(event):
     input_text = event.pattern_match.group(1)
@@ -37,14 +36,13 @@ async def add_far(event):
     if match:
         limit = int(match.group(1))
         data["warn_limit"] = limit
-        # إخفاء المتغير من نص الكليشة الأساسي
         clean_msg = input_text.replace(f"$warn/{limit}", "").replace("$warn", "").strip()
         data["msg"] = clean_msg
     else:
         data["msg"] = input_text.replace("$warn", "").strip()
         data["warn_limit"] = 5
     await save_data(data)
-    await event.edit(f"✅ **تم حفظ الفار بنجاح**\n\n**التحذيرات المحددة:** {data['warn_limit']}")
+    await event.edit(f"✅ **تم حفظ الفار بنجاح**\n\n**التحذيرات:** {data['warn_limit']}")
 
 @client.on(events.NewMessage(outgoing=True, pattern=r"^\.تحديد عقوبة (حظر|كتم)$"))
 async def set_action(event):
@@ -52,7 +50,7 @@ async def set_action(event):
     data = await load_data()
     data["action"] = action
     await save_data(data)
-    await event.edit(f"⚙️ **تم تحديد العقوبة عند اكتمال التحذيرات إلى: {action}**")
+    await event.edit(f"⚙️ **تم تحديد العقوبة إلى: {action}**")
 
 @client.on(events.NewMessage(outgoing=True, pattern=r"^\.(تفعيل|ايقاف) فار$"))
 async def toggle_far(event):
@@ -60,27 +58,29 @@ async def toggle_far(event):
     data["status"] = True if "تفعيل" in event.text else False
     data["users"] = {} 
     await save_data(data)
-    await event.edit(f"⚙️ **نظام الفار الآن: {'شغال ✅' if data['status'] else 'معطل ❌'}**")
+    await event.edit(f"⚙️ **نظام الفار: {'شغال ✅' if data['status'] else 'مطفي ❌'}**")
 
-# --- [ 2. نظام ترك رسالة للمطور ] ---
-@client.on(events.NewMessage(incoming=True, pattern=r"^\.ترك رسالة ([\s\S]+)"))
+# 2. نظام ترك رسالة للمطور
+@client.on(events.NewMessage(incoming=True, func=lambda e: e.is_private, pattern=r"^\.ترك رسالة ([\s\S]+)"))
 async def leave_msg(event):
-    if not event.is_private: return
-    me = await client.get_me()
     sender = await event.get_sender()
-    info = (
-        f"📩 **رسالة جديدة من شخص عبر الفار:**\n\n"
-        f"👤 **الشخص:** [{sender.first_name}](tg://user?id={sender.id})\n"
-        f"🆔 **الايدي:** `{sender.id}`\n"
-        f"📝 **الرسالة:** {event.pattern_match.group(1)}"
-    )
+    if not sender or getattr(sender, 'bot', False): return
+    me = await client.get_me()
+    info = f"📩 **رسالة من:** [{sender.first_name}](tg://user?id={sender.id})\n📝 **النص:** {event.pattern_match.group(1)}"
     await client.send_message(me.id, info)
-    await event.reply("✅ **تم إرسال رسالتك بنجاح للمالك، سيتم الرد عليك قريباً.**")
+    await event.reply("✅ **وصلت رسالتك للمالك وسيتم الرد عليك.**")
 
-# --- [ 3. محرك الفار الذكي والعقوبات ] ---
+# 3. محرك الفار الذكي (خاص بالأشخاص فقط)
 @client.on(events.NewMessage(incoming=True))
 async def far_engine(event):
+    # الفلترة الحقيقية: فقط الرسائل الخاصة، ليست من بوت، وليست من مجموعات
     if not event.is_private: return
+    
+    sender = await event.get_sender()
+    # إذا كان المرسل بوت أو قناة أو مجهول نتجاهله
+    if not sender or getattr(sender, 'bot', False) or isinstance(sender, types.Channel):
+        return
+
     data = await load_data()
     if not data.get("status"): return
     
@@ -97,23 +97,20 @@ async def far_engine(event):
     data["users"] = users
     await save_data(data)
 
-    # تنفيذ العقوبة (حظر أو كتم صامت)
     if user_warns > data["warn_limit"]:
         if data["action"] == "حظر":
             if user_warns == data["warn_limit"] + 1:
                 await event.reply("🚫 **تم حظرك نهائياً لتجاوزك عدد التحذيرات.**")
                 try: await client(functions.contacts.BlockRequest(id=event.sender_id))
                 except: pass
-            return 
+            return
         else: # كتم
             if user_warns == data["warn_limit"] + 1:
                 await event.reply("🔇 **تم كتمك تلقائياً.. لن يتم استلام رسائلك.**")
-            await event.delete() # حذف صامت لكل الرسائل القادمة
+            await event.delete()
             return
 
-    # نظام الردود
     if user_warns == 1:
-        # الكليشة الفخمة مع هايبر لينك (الادمن) العربي
         admin_url = "https://t.me/xxnnxg"
         admin_link = f"[𝑨𝑫𝑴𝑰𝑵]({admin_url})"
         arabic_link = f"[〔الادمن〕]({admin_url})"
@@ -131,17 +128,16 @@ async def far_engine(event):
         )
         await event.reply(final_reply)
     else:
-        # تحذيرات مختصرة
         warn_left = data["warn_limit"] - user_warns
         if warn_left > 0:
             await event.reply(f"⚠️ **تحذير! متبقي لك {warn_left} رسايل فقط.**")
         elif warn_left == 0:
             await event.reply(f"🚫 **هذا هو التحذير الأخير! سيتم {data['action']}ك في الرسالة القادمة.**")
 
-# --- [ 4. أوامر المساعدة والسماح ] ---
+# 4. السماح للمزعج
 @client.on(events.NewMessage(outgoing=True, pattern=r"^\.سماح للمزعج$"))
 async def allow_user(event):
-    if not event.is_reply: return await event.edit("⚠️ الرد على رسالة الشخص.")
+    if not event.is_reply: return await event.edit("⚠️ رد على رسالة الشخص.")
     reply = await event.get_reply_message()
     data = await load_data()
     uid = str(reply.sender_id)
@@ -154,18 +150,13 @@ async def allow_user(event):
 
 @client.on(events.NewMessage(outgoing=True, pattern=r"^\.م10$"))
 async def menu10(event):
-    menu = (
-        "🛡️ **نـظـام الـفـار والـحـمـايـة**\n"
+    await event.edit(
+        "🛡️ **نـظـام الـفـار والـحـمـايـة (للأشخاص فقط)**\n"
         "•──────────────•\n"
         "• `.اضافة فار` [النص] $warn/العدد\n"
-        "⤷ لحفظ كليشة الرد مع تحديد التحذيرات.\n\n"
         "• `.تحديد عقوبة` [حظر/كتم]\n"
-        "⤷ لاختيار الإجراء عند انتهاء التحذيرات.\n\n"
         "• `.تفعيل فار` / `.ايقاف فار`\n"
-        "⤷ للتحكم بنظام الرد التلقائي.\n\n"
         "• `.سماح للمزعج` (بالرد)\n"
-        "⤷ لإلغاء العقوبة وتصفير العداد.\n\n"
-        "• `.حذف الفار` ↤ لمسح الإعدادات.\n"
+        "• `.حذف الفار` ↤ مسح الإعدادات\n"
         "•──────────────•"
     )
-    await event.edit(menu)
