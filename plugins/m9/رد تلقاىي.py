@@ -111,7 +111,7 @@ async def far_engine(event):
         admin_link = f"[𝑨𝑫𝑴𝑰𝑵](https://t.me/xxnnxg)"
         footer = (
             "◆━━━━━━━━━━━━━━◆\n"
-            f"◈➥{admin_link}〔الادمن〕✔\n"
+            f"◈➥{https://t.me/xxnnxg}〔الادمن〕✔\n"
             "◆━━━━━━━━━━━━━◆"
         )
         final_reply = (
