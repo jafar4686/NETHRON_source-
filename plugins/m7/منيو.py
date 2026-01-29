@@ -1,16 +1,14 @@
-
+import __main__, os
 from telethon import events
-import __main__
 
 # جلب الكلاينت المحقون من الميكر
 client = getattr(__main__, 'client', None)
 
-@client.on(events.NewMessage(pattern=r"^\.م7$"))
-async def menu7(event):
-    # يشتغل فقط إذا أنت كتبت الأمر
-    if not event.out:
-        return
+# مسار الصورة اللي صممناها
+IMG_PATH = "assets/TIME.jpg"
 
+@client.on(events.NewMessage(outgoing=True, pattern=r"^\.م7$"))
+async def menu7(event):
     klisha = (
         "★────────☭────────★\n"
         "   ☭ • 𝑆𝑂𝑈𝑅𝐶𝐸 𝑁𝐸𝑇𝐻𝑅𝑂𝑁 • ☭\n"
@@ -27,4 +25,11 @@ async def menu7(event):
         "💬 ملاحظة: تم البرمجة بواسطة نيثرون"
     )
 
-    await event.edit(klisha)
+    # فحص إذا الصورة موجودة بالمجلد
+    if os.path.exists(IMG_PATH):
+        # يحذف الأمر (.م7) ويرسل الصورة مع الكليشة
+        await event.delete()
+        await client.send_file(event.chat_id, IMG_PATH, caption=klisha)
+    else:
+        # إذا الصورة مو موجودة، يعدل الرسالة فقط حتى ما يعلق السورس
+        await event.edit(klisha + "\n\n⚠️ تنبيه: صورة TIME.jpg غير موجودة في مجلد assets")
