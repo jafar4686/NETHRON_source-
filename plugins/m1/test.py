@@ -10,7 +10,6 @@ def get_readable_time(seconds: int) -> str:
     count = 0
     ping_time = ""
     time_list = []
-    # تحويل الوحدات للرموز الإنجليزية المختصرة
     time_suffix_list = ["s", "m", "h", "d"]
     while count < 4:
         count += 1
@@ -29,19 +28,21 @@ def get_readable_time(seconds: int) -> str:
 
 @client.on(events.NewMessage(outgoing=True, pattern=r"^\.فحص$"))
 async def check_device(event):
-    # 1. حساب البنك
+    # 1. جلب معلومات الحساب وصورة البروفايل
+    me = await client.get_me()
+    photo = await client.download_profile_photo(me.id) # سحب صورتك يا وحش
+    
+    # 2. حساب المتغيرات
     start = datetime.datetime.now()
     end = datetime.datetime.now()
     ping = f"{(end - start).microseconds / 1000:.2f}ms"
     
-    # 2. جلب معلومات الحساب
-    me = await client.get_me()
     name = f"[{me.first_name}](tg://user?id={me.id})"
     user = f"@{me.username}" if me.username else "لا يوجد"
     pyver = platform.python_version()
     uptime = get_readable_time(int(time.time() - start_time))
     
-    # الكليشة الفخمة
+    # الكليشة اللي ردتها
     msg = (
         "★────────☭────────★\n"
         "   ☭ • 𝐼𝑅𝐴𝑄𝑇𝐻𝑂𝑂𝑁 • ☭\n"
@@ -55,12 +56,11 @@ async def check_device(event):
         "𝑫𝑬𝑽 ↠ [𝑫𝑬𝑽](https://t.me/NETH_RON)\n"
         "𝑨𝑫𝑴𝑰𝑵 ↠ [𝑨𝑫](https://t.me/xxnnxg)"
     )
-    
-    # 3. جلب صورة الحساب وإرسالها
-    photo = await client.download_profile_photo(me.id)
-    
-    await event.delete() # حذف كلمة .فحص
-    if photo:
+
+    try:
+        # التعديل الفوري: النص + صورتك اللي سحبناها
+        await event.edit(msg, file=photo)
+    except Exception:
+        # احتياطاً إذا حسابك ما يدعم التعديل لميديا
+        await event.delete()
         await client.send_file(event.chat_id, photo, caption=msg)
-    else:
-        await client.send_message(event.chat_id, msg)
