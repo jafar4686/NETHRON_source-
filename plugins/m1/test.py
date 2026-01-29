@@ -10,7 +10,7 @@ def get_readable_time(seconds: int) -> str:
     count = 0
     ping_time = ""
     time_list = []
-    # تحويل الوحدات للرموز الإنجليزية المختصرة
+    # الوحدات بالرموز الإنجليزية المختصرة
     time_suffix_list = ["𝒔", "𝒎", "𝒉", "𝒅"]
     while count < 4:
         count += 1
@@ -29,7 +29,7 @@ def get_readable_time(seconds: int) -> str:
 
 @client.on(events.NewMessage(outgoing=True, pattern=r"^\.فحص$"))
 async def check_device(event):
-    # 1. حساب البنك
+    # 1. حساب البنك (Ping) فوراً
     start = datetime.datetime.now()
     end = datetime.datetime.now()
     ping = f"{(end - start).microseconds / 1000:.2f}ms"
@@ -41,7 +41,7 @@ async def check_device(event):
     pyver = platform.python_version()
     uptime = get_readable_time(int(time.time() - start_time))
     
-    # الكليشة الفخمة
+    # الكليشة الفخمة اللي ردتها
     msg = (
         "★────────☭────────★\n"
         "   ☭ • 𝐼𝑅𝐴𝑄𝑇𝐻𝑂𝑂𝑁 • ☭\n"
@@ -56,11 +56,5 @@ async def check_device(event):
         "𝑨𝑫𝑴𝑰𝑵 ↠ [𝑨𝑫](https://t.me/xxnnxg)"
     )
     
-    # 3. جلب صورة الحساب وإرسالها
-    photo = await client.download_profile_photo(me.id)
-    
-    await event.delete() # حذف كلمة .فحص
-    if photo:
-        await client.send_file(event.chat_id, photo, caption=msg)
-    else:
-        await client.send_message(event.chat_id, msg)
+    # 3. التعديل الفوري (أسرع شي)
+    await event.edit(msg)
