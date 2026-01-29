@@ -8,7 +8,7 @@ VORTEX = ["◜", "◝", "◞", "◟"]
 @client.on(events.NewMessage(outgoing=True, pattern=r"^\.م7$"))
 async def menu7(event):
     # حط الرابط المباشر اللي أخذته من الموقع هنا
-    pic_link = "https://files.catbox.moe/2bi5k8.mp4" 
+    pic_link = "https://files.catbox.moe/ax3mrl.mp4" 
 
     klisha = (
         "★────────☭────────★\n"
