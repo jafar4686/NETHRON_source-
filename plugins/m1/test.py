@@ -2,13 +2,15 @@ import __main__, asyncio, datetime, platform, time
 from telethon import events
 
 client = getattr(__main__, 'client', None)
+
+# وقت بداية تشغيل السورس
 start_time = time.time()
 
 def get_readable_time(seconds: int) -> str:
     count = 0
     ping_time = ""
     time_list = []
-    time_suffix_list = ["s", "m", "h", "d"]
+    time_suffix_list = ["𝒔", "𝒎", "𝒉", "𝒅"]
     while count < 4:
         count += 1
         remainder, result = divmod(seconds, 60) if count < 3 else divmod(seconds, 24)
@@ -26,12 +28,11 @@ def get_readable_time(seconds: int) -> str:
 
 @client.on(events.NewMessage(outgoing=True, pattern=r"^\.فحص$"))
 async def check_device(event):
+    # 1. جلب معلومات الحساب وصورة البروفايل
     me = await client.get_me()
+    photo = await client.download_profile_photo(me.id) # سحب صورتك يا وحش
     
-    # 1. سحب ميديا البروفايل (صورة أو فيديو)
-    my_media = await client.download_profile_photo(me.id)
-    
-    # 2. حساب المتغيرات بسرعة
+    # 2. حساب المتغيرات
     start = datetime.datetime.now()
     end = datetime.datetime.now()
     ping = f"{(end - start).microseconds / 1000:.2f}ms"
@@ -41,6 +42,7 @@ async def check_device(event):
     pyver = platform.python_version()
     uptime = get_readable_time(int(time.time() - start_time))
     
+    # الكليشة اللي ردتها
     msg = (
         "★────────☭────────★\n"
         "   ☭ • 𝐼𝑅𝐴𝑄𝑇𝐻𝑂𝑂𝑁 • ☭\n"
@@ -56,15 +58,9 @@ async def check_device(event):
     )
 
     try:
-        # محاولة التعديل مع خاصية فيديو-نوت أو تحويل لـ GIF
-        await event.edit(msg, file=my_media, force_document=False)
+        # التعديل الفوري: النص + صورتك اللي سحبناها
+        await event.edit(msg, file=photo)
     except Exception:
-        # إذا التعديل علّق بسبب حجم الفيديو، نحذف ونرسل فوراً كـ GIF
+        # احتياطاً إذا حسابك ما يدعم التعديل لميديا
         await event.delete()
-        await client.send_file(
-            event.chat_id, 
-            my_media, 
-            caption=msg, 
-            video_note=False, # ما يرسله كفيديو دائري
-            attributes=None # يخليه يتعامل وياه كـ GIF تلقائي
-        )
+        await client.send_file(event.chat_id, photo, caption=msg)
