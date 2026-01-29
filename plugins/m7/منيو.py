@@ -5,7 +5,7 @@ from telethon import events
 client = getattr(__main__, 'client', None)
 
 # مسار الصورة اللي صممناها
-IMG_PATH = "assets/TIME.jpg"
+IMG_PATH = "assets/welcome.jpg"
 
 @client.on(events.NewMessage(outgoing=True, pattern=r"^\.م7$"))
 async def menu7(event):
