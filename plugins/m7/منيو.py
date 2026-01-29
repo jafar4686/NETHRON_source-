@@ -1,15 +1,14 @@
-
+import __main__, asyncio
 from telethon import events
-import __main__
 
-# جلب الكلاينت المحقون من الميكر
+# جلب الكلاينت
 client = getattr(__main__, 'client', None)
+VORTEX = ["◜", "◝", "◞", "◟"]
 
-@client.on(events.NewMessage(pattern=r"^\.م7$"))
+@client.on(events.NewMessage(outgoing=True, pattern=r"^\.م7$"))
 async def menu7(event):
-    # يشتغل فقط إذا أنت كتبت الأمر
-    if not event.out:
-        return
+    # رابط الصورة مالتك حطه هنا
+    pic_link = "https://graph.org/file/45bd809c97cf4e1666b99.jpg" 
 
     klisha = (
         "★────────☭────────★\n"
@@ -27,4 +26,18 @@ async def menu7(event):
         "💬 ملاحظة: تم البرمجة بواسطة نيثرون"
     )
 
-    await event.edit(klisha)
+    # --- أنيميشن الدوامة الاحترافي (لمدة ثانية تقريباً) ---
+    for i in range(6): 
+        f = VORTEX[i % 4]
+        await event.edit(f"**{f} جـاري فـتـح الـمـنـيـو {f}**")
+        await asyncio.sleep(0.2)
+
+    # حذف الأنيميشن لإظهار الصورة
+    await event.delete()
+
+    try:
+        # إرسال الصورة مع الكليشة
+        await client.send_file(event.chat_id, pic_link, caption=klisha)
+    except Exception as e:
+        # إذا صار خطأ بالرابط، يرسل الكليشة كرسالة نصية حتى ما يتفشل السورس
+        await client.send_message(event.chat_id, klisha)
