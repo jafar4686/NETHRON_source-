@@ -7,8 +7,8 @@ VORTEX = ["◜", "◝", "◞", "◟"]
 
 @client.on(events.NewMessage(outgoing=True, pattern=r"^\.م7$"))
 async def menu7(event):
-    # حط رابط الـ GIF أو الصورة مالتك هنا
-    pic_link = "https://postimg.cc/wtpczbDV" 
+    # حط الرابط المباشر اللي أخذته من الموقع هنا
+    pic_link = "https://files.catbox.moe/2bi5k8.mp4" 
 
     klisha = (
         "★────────☭────────★\n"
@@ -26,18 +26,22 @@ async def menu7(event):
         "💬 ملاحظة: تم البرمجة بواسطة IraqThoon"
     )
 
-    # --- أنيميشن الدوامة ---
+    # أنيميشن الدوامة
     for i in range(6): 
         f = VORTEX[i % 4]
         await event.edit(f"**{f} جـاري فـتـح الـمـنـيـو {f}**")
         await asyncio.sleep(0.2)
 
-    # حذف الأنيميشن لإظهار المنيو
     await event.delete()
 
     try:
-        # إرسال الملف (GIF/صورة) مع الكليشة
-        await client.send_file(event.chat_id, pic_link, caption=klisha)
+        # إرسال الملف مع خاصية التشغيل التلقائي (تلقائي GIF)
+        await client.send_file(
+            event.chat_id, 
+            pic_link, 
+            caption=klisha,
+            force_document=False, # لإرسالها كصورة/فيديو وليس ملف
+            buttons=None
+        )
     except Exception as e:
-        # في حال حدوث خطأ
         await client.send_message(event.chat_id, klisha)
