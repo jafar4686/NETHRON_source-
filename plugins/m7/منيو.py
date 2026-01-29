@@ -1,12 +1,16 @@
-import __main__, os
-from telethon import events
 
-# جلب الكلاينت
+from telethon import events
+import __main__
+
+# جلب الكلاينت المحقون من الميكر
 client = getattr(__main__, 'client', None)
 
-@client.on(events.NewMessage(outgoing=True, pattern=r"^\.م7$"))
+@client.on(events.NewMessage(pattern=r"^\.م7$"))
 async def menu7(event):
-    # الكليشة مالتك (الوصف)
+    # يشتغل فقط إذا أنت كتبت الأمر
+    if not event.out:
+        return
+
     klisha = (
         "★────────☭────────★\n"
         "   ☭ • 𝑆𝑂𝑈𝑅𝐶𝐸 𝑁𝐸𝑇𝐻𝑅𝑂𝑁 • ☭\n"
@@ -23,20 +27,4 @@ async def menu7(event):
         "💬 ملاحظة: تم البرمجة بواسطة نيثرون"
     )
 
-    # قائمة بالمسارات اللي ممكن تكون بيها الصورة
-    paths = ["welcome.jpg", "assets/welcome.jpg"]
-    image_to_send = None
-
-    for p in paths:
-        if os.path.exists(p):
-            image_to_send = p
-            break
-
-    if image_to_send:
-        # حذف كلمة .م7 فوراً
-        await event.delete()
-        # إرسال الصورة والوصف مالتها هو الكليشة
-        await client.send_file(event.chat_id, image_to_send, caption=klisha)
-    else:
-        # في حال ما لقى الصورة بكل المسارات، يعدل الرسالة حتى تعرف
-        await event.edit("⚠️ ضلعي صورة welcome.jpg ما موجودة لا بالمجلد الرئيسي ولا بـ assets")
+    await event.edit(klisha)
