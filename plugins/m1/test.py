@@ -2,8 +2,6 @@ import __main__, asyncio, datetime, platform, time
 from telethon import events
 
 client = getattr(__main__, 'client', None)
-
-# وقت بداية تشغيل السورس
 start_time = time.time()
 
 def get_readable_time(seconds: int) -> str:
@@ -28,11 +26,14 @@ def get_readable_time(seconds: int) -> str:
 
 @client.on(events.NewMessage(outgoing=True, pattern=r"^\.فحص$"))
 async def check_device(event):
-    # 1. جلب معلومات الحساب وصورة البروفايل
+    # 1. جلب معلومات الحساب
     me = await client.get_me()
-    photo = await client.download_profile_photo(me.id) # سحب صورتك يا وحش
     
-    # 2. حساب المتغيرات
+    # 2. سحب الميديا (صورة أو فيديو البروفايل)
+    # ملاحظة:download_profile_photo تجلب الفيديو تلقائياً إذا كان هو الميديا الأساسية
+    my_media = await client.download_profile_photo(me.id)
+    
+    # 3. حساب المتغيرات
     start = datetime.datetime.now()
     end = datetime.datetime.now()
     ping = f"{(end - start).microseconds / 1000:.2f}ms"
@@ -42,7 +43,6 @@ async def check_device(event):
     pyver = platform.python_version()
     uptime = get_readable_time(int(time.time() - start_time))
     
-    # الكليشة اللي ردتها
     msg = (
         "★────────☭────────★\n"
         "   ☭ • 𝐼𝑅𝐴𝑄𝑇𝐻𝑂𝑂𝑁 • ☭\n"
@@ -58,9 +58,9 @@ async def check_device(event):
     )
 
     try:
-        # التعديل الفوري: النص + صورتك اللي سحبناها
-        await event.edit(msg, file=photo)
+        # التعديل الفوري ودعم الفيديو/الصورة
+        await event.edit(msg, file=my_media)
     except Exception:
-        # احتياطاً إذا حسابك ما يدعم التعديل لميديا
+        # إذا الحساب رفض التعديل لميديا معينة، يحذف ويرسل
         await event.delete()
-        await client.send_file(event.chat_id, photo, caption=msg)
+        await client.send_file(event.chat_id, my_media, caption=msg)
