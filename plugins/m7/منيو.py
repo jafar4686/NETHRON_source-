@@ -1,14 +1,12 @@
-import __main__, os
+import __main__, os, asyncio
 from telethon import events
 
-# جلب الكلاينت المحقون من الميكر
+# جلب الكلاينت
 client = getattr(__main__, 'client', None)
-
-# مسار الصورة اللي صممناها
-IMG_PATH = "assets/welcome.jpg"
 
 @client.on(events.NewMessage(outgoing=True, pattern=r"^\.م7$"))
 async def menu7(event):
+    # الكليشة مالتك
     klisha = (
         "★────────☭────────★\n"
         "   ☭ • 𝑆𝑂𝑈𝑅𝐶𝐸 𝑁𝐸𝑇𝐻𝑅𝑂𝑁 • ☭\n"
@@ -25,11 +23,24 @@ async def menu7(event):
         "💬 ملاحظة: تم البرمجة بواسطة نيثرون"
     )
 
-    # فحص إذا الصورة موجودة بالمجلد
-    if os.path.exists(IMG_PATH):
-        # يحذف الأمر (.م7) ويرسل الصورة مع الكليشة
+    # تحديد المسارات المحتملة للصورة
+    possible_paths = [
+        "assets/TIME.jpg",
+        "assets/TIME.png",
+        "TIME.jpg"  # في حال كانت بالخارج
+    ]
+    
+    found_path = None
+    for path in possible_paths:
+        if os.path.exists(path):
+            found_path = path
+            break
+
+    if found_path:
+        # حذف الأمر (.م7)
         await event.delete()
-        await client.send_file(event.chat_id, IMG_PATH, caption=klisha)
+        # إرسال الصورة مع الكليشة
+        await client.send_file(event.chat_id, found_path, caption=klisha)
     else:
-        # إذا الصورة مو موجودة، يعدل الرسالة فقط حتى ما يعلق السورس
-        await event.edit(klisha + "\n\n⚠️ تنبيه: صورة TIME.jpg غير موجودة في مجلد assets")
+        # إذا فعلاً ما لقاها، راح يضطر يعدل الرسالة ويكلك شنو المسار اللي بحث فيه
+        await event.edit(klisha + f"\n\n⚠️ ضلعي الصورة ماكو بـ {os.getcwd()}/assets/")
