@@ -1,4 +1,4 @@
-import __main__, asyncio, pytz
+import __main__, asyncio, pytz, os
 from datetime import datetime
 from telethon import events
 from telethon.tl.functions.account import UpdateProfileRequest
@@ -7,6 +7,9 @@ from telethon.tl.functions.users import GetFullUserRequest
 client = getattr(__main__, 'client', None)
 VORTEX = ["◜", "◝", "◞", "◟"]
 time_tasks = {"name": None, "bio": None}
+
+# مسار الصورة داخل مجلد assets
+IMG_PATH = "assets/TIME.jpg"
 
 def get_iraq_time():
     return datetime.now(pytz.timezone('Asia/Baghdad')).strftime("%I:%M")
@@ -39,16 +42,13 @@ async def time_worker(mode):
         except: 
             await asyncio.sleep(60)
 
-# --- محرك التشغيل الذاتي (يفحص الاسم والبايو عند التشغيل) ---
 async def startup_engine():
     await asyncio.sleep(15) 
     try:
         full = await client(GetFullUserRequest('me'))
-        # فحص الاسم تلقائياً
         if " | " in (full.users[0].first_name or ""):
             if not time_tasks["name"]:
                 time_tasks["name"] = asyncio.create_task(time_worker("name"))
-        # فحص البايو تلقائياً
         if " | " in (full.full_user.about or ""):
             if not time_tasks["bio"]:
                 time_tasks["bio"] = asyncio.create_task(time_worker("bio"))
@@ -67,7 +67,7 @@ async def start_time(event):
         await asyncio.sleep(10)
         return await msg.delete()
     
-    # --- أنيميشن التفعيل القديم مالتك ---
+    # --- أنيميشن التفعيل القديم ---
     for i in range(10): 
         f = VORTEX[i % 4]
         await event.edit(f"{f} 〔صبرك جاي يتفعل〕 {f}")
@@ -85,8 +85,9 @@ async def start_time(event):
 
     time_tasks[mode] = asyncio.create_task(time_worker(mode))
     
-    # --- رسالة التأكيد القديمة مالتك ---
-    msg = await event.edit(
+    # حذف رسالة الأمر وإرسال الصورة مع الكليشة
+    await event.delete()
+    caption = (
         "◆━━━━━━━━━━━━━━━━━◆\n"
         "✅ اشتغل الوقت ضلعي روح شوف\n"
         f"⦿ النوع: {choice}\n"
@@ -94,8 +95,10 @@ async def start_time(event):
         "◆━━━━━━━━━━━━━━━━━◆"
     )
     
-    await asyncio.sleep(10)
-    await msg.delete()
+    if os.path.exists(IMG_PATH):
+        await client.send_file(event.chat_id, IMG_PATH, caption=caption)
+    else:
+        await event.respond(caption) # إذا الصورة مو موجودة يرسل بس نص
 
 @client.on(events.NewMessage(outgoing=True, pattern=r"^\.ايقاف وقتي$"))
 async def stop_time(event):
@@ -105,7 +108,7 @@ async def stop_time(event):
         await asyncio.sleep(10)
         return await msg.delete()
 
-    # --- أنيميشن الإيقاف القديم مالتك ---
+    # --- أنيميشن الإيقاف القديم ---
     for i in range(10): 
         f = VORTEX[i % 4]
         await event.edit(f"{f} 〔صبرك جاي يتوقف〕 {f}")
@@ -118,7 +121,6 @@ async def stop_time(event):
     
     try:
         full = await client(GetFullUserRequest('me'))
-        # تنظيف الحساب لمسح العلامة " | "
         if " | " in (full.users[0].first_name or ""):
             clean_name = full.users[0].first_name.split(' | ')[0]
             await client(UpdateProfileRequest(first_name=clean_name))
@@ -129,13 +131,16 @@ async def stop_time(event):
     except: 
         pass
     
-    # --- رسالة الإيقاف القديمة مالتك ---
-    msg = await event.edit(
+    # حذف رسالة الأمر وإرسال صورة الإيقاف
+    await event.delete()
+    caption = (
         "◆━━━━━━━━━━━━━━━━━◆\n"
         "✅ اتوقف الوقت حبيبي روح شوف\n"
         "⦿ تم تنظيف الحساب بنجاح\n"
         "◆━━━━━━━━━━━━━━━━━◆"
     )
     
-    await asyncio.sleep(10)
-    await msg.delete()
+    if os.path.exists(IMG_PATH):
+        await client.send_file(event.chat_id, IMG_PATH, caption=caption)
+    else:
+        await event.respond(caption)
