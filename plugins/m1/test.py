@@ -26,14 +26,12 @@ def get_readable_time(seconds: int) -> str:
 
 @client.on(events.NewMessage(outgoing=True, pattern=r"^\.فحص$"))
 async def check_device(event):
-    # 1. جلب معلومات الحساب
     me = await client.get_me()
     
-    # 2. سحب الميديا (صورة أو فيديو البروفايل)
-    # ملاحظة:download_profile_photo تجلب الفيديو تلقائياً إذا كان هو الميديا الأساسية
+    # 1. سحب ميديا البروفايل (صورة أو فيديو)
     my_media = await client.download_profile_photo(me.id)
     
-    # 3. حساب المتغيرات
+    # 2. حساب المتغيرات بسرعة
     start = datetime.datetime.now()
     end = datetime.datetime.now()
     ping = f"{(end - start).microseconds / 1000:.2f}ms"
@@ -58,9 +56,15 @@ async def check_device(event):
     )
 
     try:
-        # التعديل الفوري ودعم الفيديو/الصورة
-        await event.edit(msg, file=my_media)
+        # محاولة التعديل مع خاصية فيديو-نوت أو تحويل لـ GIF
+        await event.edit(msg, file=my_media, force_document=False)
     except Exception:
-        # إذا الحساب رفض التعديل لميديا معينة، يحذف ويرسل
+        # إذا التعديل علّق بسبب حجم الفيديو، نحذف ونرسل فوراً كـ GIF
         await event.delete()
-        await client.send_file(event.chat_id, my_media, caption=msg)
+        await client.send_file(
+            event.chat_id, 
+            my_media, 
+            caption=msg, 
+            video_note=False, # ما يرسله كفيديو دائري
+            attributes=None # يخليه يتعامل وياه كـ GIF تلقائي
+        )
