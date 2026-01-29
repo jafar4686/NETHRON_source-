@@ -1,13 +1,13 @@
-import __main__, asyncio
-from telethon import events, utils
-from telethon.tl import types
+import __main__
+from telethon import events
 
+# جلب الكلاينت
 client = getattr(__main__, 'client', None)
-VORTEX = ["◜", "◝", "◞", "◟"]
 
 @client.on(events.NewMessage(outgoing=True, pattern=r"^\.م7$"))
 async def menu7(event):
-    pic_link = "https://files.catbox.moe/ax3mrl.mp4" # رابط الـ mp4 أو الصورة
+    # حط رابط الـ mp4 أو الصورة هنا
+    pic_link = "https://files.catbox.moe/ax3mrl.mp4" 
 
     klisha = (
         "★────────☭────────★\n"
@@ -25,17 +25,10 @@ async def menu7(event):
         "💬 ملاحظة: تم البرمجة بواسطة IraqThoon"
     )
 
-    # أنيميشن البداية (تعديل نصي)
-    for i in range(4): 
-        f = VORTEX[i % 4]
-        await event.edit(f"**{f} جـاري الـتـحـقـق {f}**")
-        await asyncio.sleep(0.2)
-
     try:
-        # محاولة تعديل الرسالة النصية وإضافة الميديا لها
-        # ملاحظة: هذه الطريقة قد لا تنجح مع كل أنواع الحسابات/الروابط
+        # تعديل الرسالة فوراً بإضافة الصورة/الفيديو والنص
         await event.edit(klisha, file=pic_link)
-    except:
-        # إذا فشل التعديل (وهو المتوقع)، نرجع للطريقة المضمونة: حذف وإرسال
+    except Exception as e:
+        # في حال حدوث أي مشكلة بالتعديل، يحذف ويرسل كخيار احتياطي
         await event.delete()
         await client.send_file(event.chat_id, pic_link, caption=klisha)
