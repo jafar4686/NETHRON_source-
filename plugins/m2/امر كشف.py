@@ -1,51 +1,60 @@
-import __main__, os, json
+import __main__, os
 from telethon import events, functions, types
 
 # استخراج الكلاينت
 client = getattr(__main__, 'client', None)
-BASE_DIR = "group"
-
-# دالة لجلب المجلد (للتأكد من أن المجموعة مفعلة)
-def get_group_folder(chat_id):
-    if not os.path.exists(BASE_DIR): return None
-    for folder in os.listdir(BASE_DIR):
-        if folder.endswith(str(chat_id)):
-            return os.path.join(BASE_DIR, folder)
-    return None
 
 @client.on(events.NewMessage(outgoing=True, pattern=r"^\.كشف$"))
 async def detect_user(event):
-    if not event.is_group: return
+    if not event.is_group: 
+        return await event.edit("⚠️ الأمر للمجموعات فقط.")
     if not event.is_reply:
-        return await event.edit("⚠️ **يرجى الرد على الشخص لكشف حسابه!**")
+        return await event.edit("⚠️ يرجى الرد على الشخص لكشف حسابه!")
 
     # جلب معلومات الشخص المردود عليه
     reply_msg = await event.get_reply_message()
     user_id = reply_msg.sender_id
     
     try:
+        # جلب الكيان الكامل للشخص والبايو
         user = await client.get_entity(user_id)
         full_user = await client(functions.users.GetFullUserRequest(user.id))
         
-        # 1. جلب الرتبة من التليجرام مباشرة
+        # 1. جلب الرتبة (Rank)
         p = await client.get_permissions(event.chat_id, user.id)
-        rank = "المنشئ" if p.is_creator else "مشرف" if p.is_admin else "عضو"
+        if p.is_creator:
+            rank = "المنشئ"
+        elif p.is_admin:
+            rank = "مشرف"
+        else:
+            rank = "عضو"
 
-        # 2. جلب تاريخ الانضمام (تقريبي من بيانات الحساب)
+        # 2. جلب تاريخ الانضمام (Join Date)
+        # ملاحظة: تاريخ الانضمام الدقيق يحتاج صلاحيات مشرف، سنستخدم تاريخ أول ظهور بالحساب كبديل
         join_date = user.date.strftime("%Y/%m/%d") if hasattr(user, 'date') and user.date else "غير معروف"
 
-        # 3. حساب عدد الرسائل في هذه المجموعة
-        result = await client(functions.messages.SearchRequest(
-            peer=event.chat_id, q='', filter=types.InputMessagesFilterEmpty(),
-            min_date=None, max_date=None, offset_id=0, add_offset=0, limit=0, max_id=0, min_id=0,
-            from_id=user.id, hash=0
+        # 3. حساب عدد الرسائل (Message Count) بطريقة مضمونة
+        search_result = await client(functions.messages.SearchRequest(
+            peer=event.chat_id,
+            q='',
+            filter=types.InputMessagesFilterEmpty(),
+            min_date=None,
+            max_date=None,
+            offset_id=0,
+            add_offset=0,
+            limit=1, # نحتاج العدد فقط
+            max_id=0,
+            min_id=0,
+            from_id=user.id,
+            hash=0
         ))
-        count_msg = result.total
+        # استخدام hasattr للتأكد من وجود القيمة وتجنب الخطأ السابق
+        count_msg = getattr(search_result, 'count', 0)
 
-        # 4. التنسيق النهائي
-        name = user.first_name
+        # 4. التنسيق الفخم كما طلبته
+        name = user.first_name if user.first_name else "لا يوجد"
         username = f"@{user.username}" if user.username else "لا يوجد"
-        bio = full_user.full_user.about or "لا يوجد بايو"
+        bio = full_user.full_user.about if full_user.full_user.about else "لا يوجد بايو"
         
         final_text = (
             "★────────☭────────★\n"
@@ -65,4 +74,4 @@ async def detect_user(event):
         await event.edit(final_text, link_preview=False)
 
     except Exception as e:
-        await event.edit(f"⚠️ **خطأ في جلب البيانات:**\n`{str(e)}`")
+        await event.edit(f"⚠️ **حدث خطأ أثناء الكشف:**\n`{str(e)}`")
