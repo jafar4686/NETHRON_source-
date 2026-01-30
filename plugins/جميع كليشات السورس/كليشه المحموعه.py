@@ -1,18 +1,11 @@
-
 import __main__, asyncio, json, os
 from telethon import events, functions, types
-from datetime import datetime
 
-# استخراج الكلاينت من الملف الرئيسي
 client = getattr(__main__, 'client', None)
 VORTEX = ["◜", "◝", "◞", "◟"]
 BASE_DIR = "group"
 
-# إنشاء المجلد الرئيسي إذا لم يكن موجوداً
-if not os.path.exists(BASE_DIR):
-    os.makedirs(BASE_DIR)
-
-# --- دالة استخراج المسارات المنظمة ---
+# --- دالة المسارات (تضمن إنشاء كل شيء داخل مجلد المجموعة) ---
 def get_paths(chat_id):
     group_folder = os.path.join(BASE_DIR, f"group_{chat_id}")
     if not os.path.exists(group_folder):
@@ -21,10 +14,11 @@ def get_paths(chat_id):
         "folder": group_folder,
         "owner": os.path.join(group_folder, "owner.json"),
         "members": os.path.join(group_folder, "members.txt"),
-        "mutes": os.path.join(group_folder, "mutes.json")
+        "mutes": os.path.join(group_folder, "mutes.json"),
+        "settings": os.path.join(group_folder, "settings.json")
     }
 
-# --- فلتر التحقق الصارم من المالك عبر الملف ---
+# --- فلتر التحقق من المالك عبر ملف owner.json ---
 async def verify_owner(event):
     if not event.out: return False
     paths = get_paths(event.chat_id)
@@ -51,17 +45,17 @@ async def menu2(event):
         f"• 𝑾𝒆𝒍𝒄𝒐𝒎𝒆 ⌯ {o['name']}\n"
         f"• 𝑹𝒂𝒏𝒌 ⌯ {o['rank']}\n\n"
         "🛡 **أوامر المجموعة:**\n"
-        "• `.تفعيل مجموعه` ➥ تفعيل الأرشفة والقفل\n"
+        "• `.تفعيل مجموعه` ➥ أرشفة الأعضاء والقفل\n"
         "• `.كتم` ➥ كتم الشخص (بالرد)\n"
         "• `.فك كتم` ➥ فك الكتم (بالرد)\n"
-        "• `.تفاعلي` ➥ عرض ملفك الشخصي\n"
+        "• `.تفاعلي` ➥ عرض ملف المالك\n"
         "• `.كشف` ➥ كشف حساب شخص (بالرد)\n\n"
         "★────────☭────────★"
     )
     await event.edit(text)
 
 # ==========================================
-# 2. أمر التفعيل (إنشاء المملكة وسحب الأعضاء)
+# 2. أمر التفعيل (سحب الأعضاء وإنشاء الهيكل)
 # ==========================================
 @client.on(events.NewMessage(outgoing=True, pattern=r"^\.تفعيل مجموعه$"))
 async def enable_group(event):
@@ -70,14 +64,14 @@ async def enable_group(event):
     paths = get_paths(cid)
 
     for f in VORTEX:
-        await event.edit(f"⌯ {f} 〔 جاري إنشاء قاعدة بيانات الكروب 〕 {f} ⌯")
+        await event.edit(f"⌯ {f} 〔 جاري تهيئة ملفات المجموعة 〕 {f} ⌯")
         await asyncio.sleep(0.1)
 
     me = await client.get_me()
     p = await client.get_permissions(cid, me.id)
     rank = "مالك الكروب" if p.is_creator else "مشرف" if p.is_admin else "عضو"
 
-    # 1. إنشاء ملف المالك (owner.json)
+    # 1. إنشاء ملف المالك داخل مجلد الكروب
     owner_info = {
         "name": me.first_name,
         "user": f"@{me.username}" if me.username else "None",
@@ -87,87 +81,63 @@ async def enable_group(event):
     with open(paths["owner"], "w", encoding="utf-8") as f:
         json.dump(owner_info, f, indent=4, ensure_ascii=False)
 
-    # 2. أرشفة الأعضاء (members.txt)
-    await event.edit("⏳ **جاري أرشفة الأعضاء داخل المجلد...**")
-    members_list = []
+    # 2. أرشفة جميع الأعضاء (members.txt)
+    await event.edit("⏳ **جاري سحب الأعضاء وتصنيف الرتب...**")
+    members_data = []
     async for user in client.iter_participants(cid):
-        u_p = await client.get_permissions(cid, user.id)
-        u_rank = "owner" if u_p.is_creator else "admin" if u_p.is_admin else "member"
-        members_list.append(f"{user.first_name} | {u_rank}")
+        try:
+            u_p = await client.get_permissions(cid, user.id)
+            u_rank = "owner" if u_p.is_creator else "admin" if u_p.is_admin else "member"
+            members_data.append(f"{user.first_name or 'NoName'} | {u_rank}")
+        except: continue
 
     with open(paths["members"], "w", encoding="utf-8") as f:
-        f.write("\n".join(members_list))
+        f.write("\n".join(members_data))
 
-    # 3. إنشاء ملف المكتومين
-    if not os.path.exists(paths["mutes"]):
-        with open(paths["mutes"], "w") as f: json.dump([], f)
+    # 3. ملف المكتومين والإعدادات
+    with open(paths["mutes"], "w") as f: json.dump([], f)
+    with open(paths["settings"], "w") as f: json.dump({"active": True}, f)
 
     await event.edit(f"⌯ {VORTEX[0]} 〔 تم التفعيل وحصر الأوامر بآيديك 〕 {VORTEX[0]} ⌯")
     await asyncio.sleep(5); await event.delete()
 
 # ==========================================
-# 3. معالج الأوامر الرئيسية (للمالك فقط)
+# 3. الأوامر الرئيسية (كتم، كشف، تفاعلي)
 # ==========================================
 @client.on(events.NewMessage(outgoing=True))
-async def main_commands(event):
+async def group_actions(event):
     if not event.is_group or not await verify_owner(event): return
     
     cmd = event.raw_text
     paths = get_paths(event.chat_id)
 
-    # --- أمر الكتم ---
     if cmd == ".كتم" and event.is_reply:
         reply = await event.get_reply_message()
-        if reply.sender_id == (await client.get_me()).id: return await event.edit("⚠️ ما تكدر تكتم نفسك")
-        
         with open(paths["mutes"], "r") as f: mutes = json.load(f)
-        for f in VORTEX:
-            await event.edit(f"⌯ {f} 〔 جاري كتم الشخص 〕 {f} ⌯"); await asyncio.sleep(0.1)
-        
         if reply.sender_id not in mutes:
             mutes.append(reply.sender_id)
             with open(paths["mutes"], "w") as f: json.dump(mutes, f)
-        await event.edit(f"⌯ {VORTEX[0]} 〔 تم كتمه وحفظه في الملف 〕 {VORTEX[0]} ⌯")
+        await event.edit("⌯〔 تم الكتم وحفظه بمجلد المجموعة 〕⌯")
 
-    # --- أمر فك الكتم ---
     elif cmd == ".فك كتم" and event.is_reply:
         reply = await event.get_reply_message()
         with open(paths["mutes"], "r") as f: mutes = json.load(f)
         if reply.sender_id in mutes:
             mutes.remove(reply.sender_id)
             with open(paths["mutes"], "w") as f: json.dump(mutes, f)
-        await event.edit("⌯〔 تم فك الكتم بنجاح 〕⌯")
+        await event.edit("⌯〔 تم فك الكتم من السجلات 〕⌯")
 
-    # --- أمر تفاعلي ---
-    elif cmd == ".تفاعلي":
-        with open(paths["owner"], "r", encoding="utf-8") as f: o = json.load(f)
-        text = (
-            "★────────☭────────★\n"
-            "   ☭ • 𝐼𝑅𝐴𝑄𝑇𝐻𝑂𝑂𝑁 • ☭\n"
-            "★────────☭────────★\n\n"
-            f"• 𝑵𝒂𝒎𝒆 ⌯ {o['name']}\n"
-            f"• 𝑼𝒔𝒆𝒓 ⌯ {o['user']}\n"
-            f"• 𝑰𝒅 ⌯ `{o['id']}`\n"
-            f"• 𝑹𝒂𝒏𝒌 ⌯ {o['rank']}\n\n"
-            "• 𝑫𝑬𝑽 𝑩𝒚 ⌯〔[𝑵](https://t.me/NETH_RON)〕⌯"
-        )
-        await event.edit(text, link_preview=False)
-
-    # --- أمر كشف الحساب ---
     elif cmd == ".كشف" and event.is_reply:
         reply = await event.get_reply_message()
         user = await client.get_entity(reply.sender_id)
-        full = await client(functions.users.GetFullUserRequest(user.id))
         p = await client.get_permissions(event.chat_id, user.id)
-        u_rank = "مالك الكروب" if p.is_creator else "مشرف" if p.is_admin else "عضو"
-
+        u_rank = "مالك" if p.is_creator else "مشرف" if p.is_admin else "عضو"
+        
         text = (
             "★────────☭────────★\n"
             "   ☭ • 𝐼𝑅𝐴𝑄𝑇𝐻𝑂𝑂𝑁 • ☭\n"
             "★────────☭────────★\n\n"
             f"• 𝑵𝒂𝒎𝒆 ⌯ {user.first_name}\n"
-            f"• 𝑼𝒔𝒆𝒓 ⌯ @{user.username or 'None'}\n"
-            f"• 𝑩𝒊𝒐 ⌯ {full.full_user.about or 'لا يوجد'}\n"
             f"• 𝑹𝒂𝒏𝒌 ⌯ {u_rank}\n"
             f"• 𝑰𝒅 ⌯ `{user.id}`\n\n"
             "• 𝑫𝑬𝑽 𝑩𝒚 ⌯〔[𝑵](https://t.me/NETH_RON)〕⌯"
@@ -176,29 +146,29 @@ async def main_commands(event):
         await client.send_file(event.chat_id, photo, caption=text); await event.delete()
 
 # ==========================================
-# 4. المحرك الرئيسي (حذف المكتومين + التحديث التلقائي)
+# 4. المحرك (حذف المكتومين وتحديث الأعضاء)
 # ==========================================
 @client.on(events.NewMessage())
-async def core_engine(event):
+async def handler(event):
     if not event.is_group: return
     paths = get_paths(event.chat_id)
     if not os.path.exists(paths["owner"]): return
 
-    # 1. تحديث ملف الأعضاء تلقائياً
+    # حذف المكتومين
+    try:
+        with open(paths["mutes"], "r") as f: mutes = json.load(f)
+        if event.sender_id in mutes:
+            await event.delete()
+    except: pass
+
+    # إضافة الأعضاء الجدد لملف members.txt تلقائياً
     try:
         user = await event.get_sender()
-        u_name = user.first_name
+        u_name = user.first_name or "NoName"
         with open(paths["members"], "a+", encoding="utf-8") as f:
             f.seek(0)
             if u_name not in f.read():
                 u_p = await client.get_permissions(event.chat_id, user.id)
                 u_rank = "owner" if u_p.is_creator else "admin" if u_p.is_admin else "member"
                 f.write(f"\n{u_name} | {u_rank}")
-    except: pass
-
-    # 2. حذف رسائل المكتومين
-    try:
-        with open(paths["mutes"], "r") as f: mutes = json.load(f)
-        if event.sender_id in mutes:
-            await event.delete()
     except: pass
