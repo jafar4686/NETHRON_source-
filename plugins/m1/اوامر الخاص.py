@@ -8,78 +8,68 @@ client = getattr(__main__, 'client', None)
 # متغيرات النظام
 PRIVATE_LOCKED = False
 MUTED_USERS = []
-CH_ID = None  # يوزر القناة للاشتراك الإجباري
+CH_LINK = None       
+CH_USERNAME = None   
 VORTEX = ["◜", "◝", "◞", "◟"]
 
-# --- 1. أوامر سد وفتح الخاص (تعديل فوري) ---
+# --- 1. أوامر سد وفتح الخاص ---
 @client.on(events.NewMessage(outgoing=True, pattern=r"^\.(سد|فتح) خاص$"))
-async def private_control(event):
+async def private_lock_control(event):
     global PRIVATE_LOCKED
     cmd = event.pattern_match.group(1)
-    if cmd == "سد":
-        PRIVATE_LOCKED = True
-        await event.edit("🔒 **تم قفل الخاص بنجاح.**")
-    else:
-        PRIVATE_LOCKED = False
-        await event.edit("🔓 **تم فتح الخاص بنجاح.**")
+    PRIVATE_LOCKED = (cmd == "سد")
+    await event.edit(f"🔒 **تم {cmd} الخاص بنجاح.**")
 
 # --- 2. أمر إضافة قناة الاشتراك الإجباري ---
-# تكتب: .اضافة قناة @يوزر_القناة
-@client.on(events.NewMessage(outgoing=True, pattern=r"^\.اضافة قناة (.*)"))
-async def set_channel(event):
-    global CH_ID
-    ch_user = event.pattern_match.group(1).replace("@", "")
-    CH_ID = ch_user
-    await event.edit(f"✅ **تم تحديد القناة [@{ch_user}] للاشتراك الإجباري.**")
+@client.on(events.NewMessage(outgoing=True, pattern=r"^\.اضافة قناة اجباري (.*)"))
+async def set_force_channel(event):
+    global CH_LINK, CH_USERNAME
+    link = event.pattern_match.group(1).strip()
+    CH_LINK = link
+    CH_USERNAME = link.split('/')[-1].replace("@", "")
+    await event.edit(f"✅ **تم تفعيل الاشتراك الإجباري:**\n🔗 {link}")
 
-# --- 3. أوامر الكتم والسماح (خاص فقط + لا للمحفوظات) ---
+# --- 3. أوامر الكتم والسماح ---
 @client.on(events.NewMessage(outgoing=True, pattern=r"^\.(كتم|سماح)$"))
-async def mute_control(event):
-    if not event.is_private:
-        return await event.edit("**⚠️ هذا الأمر يستخدم في الخاص حصراً!**")
-    if event.chat_id == (await client.get_me()).id:
-        return await event.edit("**⚠️ لا يمكنك استخدام هذا الأمر في المحفوظات!**")
+async def mute_system(event):
+    if not event.is_private or event.chat_id == (await client.get_me()).id:
+        return 
     if not event.is_reply:
-        return await event.edit("**⚠️ يجب الرد على الشخص أولاً!**")
+        return await event.edit("**⚠️ رد على الشخص أولاً!**")
     
-    reply_msg = await event.get_reply_message()
-    user_id = reply_msg.sender_id
+    user_id = (await event.get_reply_message()).sender_id
     cmd = event.pattern_match.group(1)
     
     action_text = "كتم" if cmd == "كتم" else "سماح"
-    for i in range(4):
-        f = VORTEX[i % 4]
+    for f in VORTEX:
         await event.edit(f"{f} ⌯〔جاري {action_text} الشخص〕⌯ {f}")
         await asyncio.sleep(0.1)
     
     if cmd == "كتم":
         if user_id not in MUTED_USERS: MUTED_USERS.append(user_id)
-        await event.edit("⌯〔تم كتم الشخص〕⌯")
+        await event.edit("⌯〔تم كتم الشخص بنجاح〕⌯")
     else:
         if user_id in MUTED_USERS: MUTED_USERS.remove(user_id)
-        await event.edit("⌯〔تم سماح الشخص〕⌯")
+        await event.edit("⌯〔تم سماح الشخص بنجاح〕⌯")
 
-# --- 4. المحرك الأساسي (حذف المكتومين + السد + الاشتراك الإجباري) ---
+# --- 4. المحرك الأساسي ---
 @client.on(events.NewMessage(incoming=True, func=lambda e: e.is_private))
-async def private_checker(event):
-    global PRIVATE_LOCKED, CH_ID
+async def private_engine(event):
+    global PRIVATE_LOCKED, CH_USERNAME, CH_LINK
     user_id = event.sender_id
     
-    # أولاً: التحقق من المكتومين
     if user_id in MUTED_USERS:
         return await event.delete()
 
-    # ثانياً: التحقق من قفل الخاص
     if PRIVATE_LOCKED:
-        await event.reply("**صاحب الحساب غير موجود حالياً، الخاص مغلق.**")
+        await event.reply("**عذراً، الخاص مغلق حالياً.**")
         return await event.delete()
 
-    # ثالثاً: التحقق من الاشتراك الإجباري
-    if CH_ID:
+    if CH_USERNAME:
         try:
-            await client(GetParticipantRequest(channel=CH_ID, user_id=user_id))
+            await client(GetParticipantRequest(channel=CH_USERNAME, user_id=user_id))
         except UserNotParticipantError:
-            await event.reply(f"⚠️ **عذراً عزيزي، يجب عليك الاشتراك بقناة السورس أولاً لتتمكن من مراسلتي:**\n\n👉 @{CH_ID}")
+            await event.reply(f"⚠️ **يجب عليك الاشتراك بقناتي أولاً لتتمكن من مراسلتي:**\n\n🔗 {CH_LINK}")
             return await event.delete()
         except Exception:
-            pass # في حال كانت القناة خاصة أو اليوزر غلط
+            pass
