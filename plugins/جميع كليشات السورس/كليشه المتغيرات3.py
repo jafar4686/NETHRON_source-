@@ -5,7 +5,7 @@ import os
 # جلب الكلاينت بطريقة آمنة
 client = getattr(__main__, 'client', None)
 
-@client.on(events.NewMessage(pattern=r"^\.3م$"))
+@client.on(events.NewMessage(pattern=r"^\.م8$"))
 async def menu8(event):
     # التأكد أنك أنت من أرسل الأمر
     if not event.out:
