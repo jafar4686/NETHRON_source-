@@ -15,7 +15,7 @@ ANNOY_CHATS = set()
 # ==========================================
 # 1. قائمة الأوامر م2 المنسقة (بنفس ستايل م1)
 # ==========================================
-@client.on(events.NewMessage(pattern=r"^\.م2$"))
+@client.on(events.NewMessage(pattern=r"^\.$"))
 async def m2_command(event):
     if not event.out: return
     m2_text = (
