@@ -5,12 +5,8 @@ import os
 # جلب الكلاينت بطريقة آمنة
 client = getattr(__main__, 'client', None)
 
-@client.on(events.NewMessage(pattern=r"^\.م8$"))
-async def menu8(event):
-    # التأكد أنك أنت من أرسل الأمر
-    if not event.out:
-        return
-
+@client.on(events.NewMessage(outgoing=True, pattern=r"^\.م3$"))
+async def menu3(event):
     klisha = (
         "★────────☭────────★\n"
         "   ☭ • 𝑆𝑂𝑈𝑅𝐶𝐸 𝑁𝐸𝑇𝐻𝑅𝑂𝑁 • ☭\n"
@@ -32,4 +28,4 @@ async def menu8(event):
     try:
         await event.edit(klisha)
     except Exception as e:
-        print(f"Error in menu8: {e}")
+        print(f"Error in menu3: {e}")
