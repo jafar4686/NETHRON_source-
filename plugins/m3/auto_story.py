@@ -11,7 +11,7 @@ AUTO_POST = {"active": False, "text": "", "interval": 600, "chats": []}
 # ==========================================
 # 1. قائمة الأوامر م3 (فخامة نيثرون)
 # ==========================================
-@client.on(events.NewMessage(pattern=r"^\.م3$"))
+@client.on(events.NewMessage(pattern=r"^\.م10$"))
 async def help_m3(event):
     if not event.out: return
     help_text = (
