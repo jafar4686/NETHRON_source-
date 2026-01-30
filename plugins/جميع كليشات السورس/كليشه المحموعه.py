@@ -7,7 +7,6 @@ client = getattr(__main__, 'client', None)
 VORTEX = ["◜", "◝", "◞", "◟"]
 GROUP_DIR = "group"
 
-# إنشاء المجلد إذا لم يكن موجوداً
 if not os.path.exists(GROUP_DIR):
     os.makedirs(GROUP_DIR)
 
@@ -27,7 +26,7 @@ async def save_db(data):
     path = await get_db_path()
     with open(path, "w") as f: json.dump(data, f)
 
-# --- قائمة المنيو .م2 ---
+# --- قائمة المنيو .م2 (للمالك فقط) ---
 @client.on(events.NewMessage(outgoing=True, pattern=r"^\.م2$"))
 async def menu2(event):
     text = (
@@ -35,18 +34,18 @@ async def menu2(event):
         "   ☭ • 𝐼𝑅𝐴𝑄𝑇𝐻𝑂𝑂𝑁 • ☭\n"
         "                  ☭ • سورس عراق ثون • ☭\n"
         "★────────☭────────★\n\n"
-        "🛡 **أوامر حماية وتفاعل المجموعات:**\n\n"
+        "🛡 **أوامر حماية وتفاعل المجموعات (للمالك):**\n\n"
         "• `.تفعيل مجموعه` ➥ لتفعيل النظام والعداد\n"
         "• `.كتم` ➥ لكتم الشخص (بالرد)\n"
         "• `.فك كتم` ➥ لفك كتم الشخص (بالرد)\n"
         "• `.تفاعلي` ➥ عرض معلوماتك ورسائلك\n"
         "• `.كشف` ➥ كشف حساب الشخص وصورته\n\n"
         "★────────☭────────★\n"
-        "💬 ملاحظة: الأوامر تعمل داخل المجموعات فقط."
+        "💬 ملاحظة: الأوامر تعمل بيدك أنت فقط."
     )
     await event.edit(text)
 
-# --- أوامر المجموعات ---
+# --- أوامر المجموعات (شرط الصدور منك فقط outgoing=True) ---
 
 @client.on(events.NewMessage(outgoing=True, pattern=r"^\.تفعيل مجموعه$"))
 async def enable_group(event):
@@ -74,6 +73,10 @@ async def mute_user(event):
     
     reply = await event.get_reply_message()
     uid = reply.sender_id
+    
+    # حماية من كتم النفس
+    if uid == (await client.get_me()).id:
+        return await event.edit("⚠️ **ما تقدر تكتم نفسك يا بطل!**")
     
     for f in VORTEX:
         await event.edit(f"⌯ {f} 〔 جاري كتم الشخص 〕 {f} ⌯")
@@ -160,7 +163,7 @@ async def detect(event):
     await client.send_file(event.chat_id, photo, caption=text, link_preview=False)
     await event.delete()
 
-# --- المحرك (حذف المكتومين + العداد) ---
+# --- المحرك (شغال للكل بس يحذف رسائل المكتومين عندك) ---
 @client.on(events.NewMessage())
 async def handler(event):
     if not event.is_group: return
@@ -169,12 +172,12 @@ async def handler(event):
     if cid not in db: return
     
     uid = str(event.sender_id)
-    # تحديث عداد الرسائل
+    # تحديث عداد الرسائل (يحسب لكل الأعضاء)
     if "msgs" not in db[cid]: db[cid]["msgs"] = {}
     db[cid]["msgs"][uid] = db[cid]["msgs"].get(uid, 0) + 1
     await save_db(db)
     
-    # حذف رسائل المكتومين
+    # حذف رسائل المكتومين (لأي شخص مكتوم عندك)
     if event.sender_id in db[cid].get("muted", []):
         try:
             await event.delete()
