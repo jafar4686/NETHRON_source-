@@ -6,11 +6,11 @@ client = getattr(__main__, 'client', None)
 VORTEX = ["◜", "◝", "◞", "◟"]
 BASE_DIR = "group"
 
-# إنشاء المجلد الرئيسي
+# إنشاء المجلد الرئيسي إذا لم يوجد
 if not os.path.exists(BASE_DIR):
     os.makedirs(BASE_DIR)
 
-# --- 1. دالة جلب المسارات بناءً على آيدي المجموعة ---
+# --- 1. دالة إدارة المسارات ---
 def get_group_paths(chat_id, title=None):
     for folder in os.listdir(BASE_DIR):
         if folder.endswith(str(chat_id)):
@@ -30,7 +30,7 @@ def get_group_paths(chat_id, title=None):
         return get_group_paths(chat_id)
     return None
 
-# --- 2. دالة تحديث الأرشيف (أعضاء + رتب) ---
+# --- 2. دالة أرشفة البيانات (أعضاء + رتب) ---
 async def refresh_all_data(chat_id, paths):
     admins_list, members_list = [], []
     async for user in client.iter_participants(chat_id):
@@ -48,7 +48,7 @@ async def refresh_all_data(chat_id, paths):
     return len(members_list)
 
 # ==========================================
-# 3. أمر التفعيل (للمنشئ فقط)
+# 3. أمر التفعيل (الكليشة الفخمة)
 # ==========================================
 @client.on(events.NewMessage(outgoing=True, pattern=r"^\.تفعيل مجموعه$"))
 async def enable_group(event):
@@ -64,60 +64,67 @@ async def enable_group(event):
     chat = await event.get_chat()
     paths = get_group_paths(event.chat_id, chat.title)
     
+    # إنشاء ملف الإحصائيات
     if not os.path.exists(paths["stats"]):
         with open(paths["stats"], "w", encoding="utf-8") as f: json.dump({}, f)
 
+    # حفظ ملف المالك
     owner_info = {"name": me.first_name, "id": me.id, "rank": "المالك", "user": "@NETH_RON"}
     with open(paths["owner"], "w", encoding="utf-8") as f:
         json.dump(owner_info, f, indent=4, ensure_ascii=False)
 
     num = await refresh_all_data(event.chat_id, paths)
-    await event.edit(f"★────────☭────────★\n• ⌯ 𝑫𝒐𝒏𝒆 𝑨𝒄𝒕𝒊𝒗𝒆 ✔\n• 𝑵𝒂𝒎𝒆 ⌯ {chat.title}\n• 𝑴𝒆𝒎𝒃𝒆𝒓𝒔 ⌯ {num}\n★────────☭────────★")
+    
+    # الكليشة المطلوبة
+    final_text = (
+        "★────────☭────────★\n"
+        "   ☭ • 𝐼𝑅𝐴𝑄𝑇𝐻𝑂𝑂𝑁 • ☭\n"
+        "★────────☭────────★\n\n"
+        "• ⌯ 𝑫𝒐𝒏𝒆 𝑨𝒄𝒕𝒊𝒗𝒆 𝑮𝒓𝒐𝒖𝒑 ✔\n"
+        f"• 𝑵𝒂𝒎𝒆 ⌯ {chat.title}\n"
+        f"• 𝑶𝒘𝒏𝒆𝒓 ⌯ {me.first_name}\n"
+        f"• 𝑵𝒖𝒎𝒃𝒆𝒓 𝑴𝒆𝒎𝒃𝒆𝒓𝒔 ⌯ {num}\n\n"
+        "• 𝑫𝑬𝑽 𝑩𝒚 ⌯〔[𝑵](https://t.me/NETH_RON)〕⌯"
+    )
+    await event.edit(final_text, link_preview=False)
 
 # ==========================================
-# 4. محرك عداد الرسائل (زيادة 1 فقط بدقة)
+# 4. محرك العداد الذكي (زيادة 1 فقط)
 # ==========================================
-# نستخدم incoming=True لمنع حساب رسائل البوت نفسه، ونتجاهل الرسائل المعدلة
+# قفل عالمي لمنع تضارب الكتابة في الملفات
+file_lock = asyncio.Lock()
+
 @client.on(events.NewMessage(incoming=True))
 async def live_stats_engine(event):
-    if not event.is_group or event.edit_date:
-        return
+    if not event.is_group or event.edit_date: return
     
-    # استخراج المسارات
     paths = get_group_paths(event.chat_id)
-    if not paths or not os.path.exists(paths["stats"]):
-        return
+    if not paths or not os.path.exists(paths["stats"]): return
 
     try:
         sender = await event.get_sender()
-        if not sender or sender.bot: return # تجاهل البوتات
+        if not sender or sender.bot: return
 
         u_id = str(sender.id)
         u_name = sender.first_name or "بدون اسم"
 
-        # فتح وحفظ البيانات مع قفل بسيط لتجنب التكرار
-        async with asyncio.Lock():
-            with open(paths["stats"], "r+", encoding="utf-8") as f:
-                try:
-                    stats_data = json.load(f)
-                except:
-                    stats_data = {}
-                
-                if u_id not in stats_data:
-                    stats_data[u_id] = {"name": u_name, "count": 1}
-                else:
-                    # الزيادة بمقدار 1 فقط
-                    stats_data[u_id]["count"] += 1
-                    stats_data[u_id]["name"] = u_name
-                
-                f.seek(0)
+        async with file_lock:
+            with open(paths["stats"], "r", encoding="utf-8") as f:
+                stats_data = json.load(f)
+            
+            if u_id not in stats_data:
+                stats_data[u_id] = {"name": u_name, "count": 1}
+            else:
+                stats_data[u_id]["count"] += 1
+                stats_data[u_id]["name"] = u_name
+
+            with open(paths["stats"], "w", encoding="utf-8") as f:
                 json.dump(stats_data, f, indent=4, ensure_ascii=False)
-                f.truncate()
     except:
         pass
 
 # ==========================================
-# 5. مراقب التغيرات (تلقائي)
+# 5. مراقب التغيرات التلقائي
 # ==========================================
 @client.on(events.ChatAction())
 async def watch_changes(event):
