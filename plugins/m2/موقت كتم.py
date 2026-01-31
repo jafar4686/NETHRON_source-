@@ -4,6 +4,7 @@ from telethon import events, functions, types
 # استخراج الكلاينت
 client = getattr(__main__, 'client', None)
 BASE_DIR = "group"
+VORTEX = ["◜", "◝", "◞", "◟"]
 
 # دالة تحويل الوقت
 def parse_time(time_str):
@@ -23,7 +24,7 @@ def get_paths(chat_id):
     return None, None
 
 # ==========================================
-# 14. أمر موقت كتم (التحديث الذكي)
+# 14. أمر موقت كتم (تحديث ذكي + فك تلقائي)
 # ==========================================
 @client.on(events.NewMessage(outgoing=True, pattern=r"^\.موقت كتم\s+(.*)$"))
 async def timed_mute(event):
@@ -57,7 +58,7 @@ async def timed_mute(event):
         return await event.edit("⚠️ **رد على الشخص أو أرسل يوزره!**")
 
     try:
-        # إضافة لملف المكتومين
+        # 1. إضافة الشخص لملف المكتومين (JSON)
         mute_list = []
         if os.path.exists(mute_file):
             with open(mute_file, "r", encoding="utf-8") as f: mute_list = json.load(f)
@@ -68,14 +69,10 @@ async def timed_mute(event):
         user_entity = await client.get_entity(user_id)
         name = user_entity.first_name or "المستخدم"
 
+        # 2. حلقة العد التنازلي (تحديث كل 30 ثانية أو 10 ثواني)
         while seconds > 0:
-            # --- نظام التحديث الذكي ---
-            if seconds > 300: # أكثر من 5 دقائق
-                step = 30 # يتحدث كل 30 ثانية
-            else: # 5 دقائق وأقل
-                step = 10 # يتحدث كل 10 ثواني (أسرع)
-
-            # لضمان عدم تجاوز الصفر
+            if seconds > 300: step = 30
+            else: step = 10
             if step > seconds: step = seconds
 
             m, s = divmod(seconds, 60)
@@ -91,23 +88,27 @@ async def timed_mute(event):
                 f"• 𝑻𝒊𝒎𝒆 𝑳𝒆𝒇𝒕 ⌯ `{time_left}`\n\n"
                 "• 𝑫𝑬𝑽 𝑩𝒚 ⌯〔[𝑵](https://t.me/NETH_RON)〕⌯"
             )
-            
             await asyncio.sleep(step)
             seconds -= step
 
-        # فك الكتم التلقائي
+        # 3. مرحلة انتهاء الوقت وفك الكتم مع التحميل
+        for f in VORTEX:
+            await event.edit(f"⌯ {f} 〔 جاري إصدار عفو ملكي عن {name} 〕 {f} ⌯")
+            await asyncio.sleep(0.2)
+
+        # مسحه من الملف نهائياً ليرجع يحجي
         if os.path.exists(mute_file):
             with open(mute_file, "r", encoding="utf-8") as f: mute_list = json.load(f)
             if user_id in mute_list:
                 mute_list.remove(user_id)
                 with open(mute_file, "w", encoding="utf-8") as f: json.dump(mute_list, f)
         
-        await event.edit(f"• ⌯ **تم فك كتم {name} تلقائياً!** ✅")
+        await event.edit(f"• ⌯ **انتهى الوقت.. تم فك كتم {name} ويمكنه التحدث الآن!** ✅")
 
     except Exception as e:
         await event.edit(f"⚠️ **خطأ:** `{str(e)}`")
 
-# محرك الحذف (يبقى شغال للمكتومين)
+# محرك الحذف (المسؤول عن مسح رسائل المكتومين)
 @client.on(events.NewMessage(incoming=True))
 async def mute_watcher(event):
     if not event.is_group: return
