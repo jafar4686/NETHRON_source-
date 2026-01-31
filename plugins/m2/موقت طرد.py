@@ -26,7 +26,7 @@ def get_owner_only(chat_id):
     return None
 
 # ==========================================
-# 13. أمر موقت طرد (.موقت طرد وقت + رد/يوزر)
+# 13. أمر موقت طرد (تحديث ذكي وآمن)
 # ==========================================
 @client.on(events.NewMessage(outgoing=True, pattern=r"^\.موقت طرد\s+(.*)$"))
 async def timed_kick(event):
@@ -36,15 +36,16 @@ async def timed_kick(event):
 
     args = event.pattern_match.group(1).split()
     if not args:
-        return await event.edit("⚠️ **استخدام الخطأ!**\nمثال: `.موقت طرد 1m` بالرد\nأو: `.موقت طرد 1m @username`")
+        return await event.edit("⚠️ **مثال: .موقت طرد 5m**")
 
     time_val = args[0]
     seconds = parse_time(time_val)
-    if not seconds:
-        return await event.edit("⚠️ **صيغة الوقت خطأ!**\nاستخدم: s للثواني، m للدقائق، h للساعات.")
+    
+    # --- الشرط: أقل مدة دقيقة واحدة ---
+    if not seconds or seconds < 60:
+        return await event.edit("⚠️ **ملكنا، أقل مدة للطرد المؤقت هي دقيقة واحدة (1m)!**")
 
     user_id = None
-    # تحديد المستخدم
     if event.is_reply:
         reply = await event.get_reply_message()
         user_id = reply.sender_id
@@ -53,9 +54,9 @@ async def timed_kick(event):
             user = await client.get_entity(args[1])
             user_id = user.id
         except:
-            return await event.edit("⚠️ **لم أجد المستخدم!**")
+            return await event.edit("⚠️ **لم أجد العضو المطلوب!**")
     else:
-        return await event.edit("⚠️ **رد على الشخص أو أرسل يوزره مع الوقت!**")
+        return await event.edit("⚠️ **رد على العضو أو أرسل يوزره مع الوقت!**")
 
     if user_id == event.sender_id:
         return await event.edit("⚠️ **لا يمكن طرد الملك!**")
@@ -64,10 +65,15 @@ async def timed_kick(event):
         target = await client.get_entity(user_id)
         name = target.first_name or "المستخدم"
         
-        start_time = seconds
         while seconds > 0:
-            # تحديث الرسالة كل 5 ثواني إذا الوقت طويل، أو كل ثانية إذا قليل
-            step = 5 if seconds > 10 else 1
+            # --- نظام التحديث الذكي (نفس الكتم) ---
+            if seconds > 300: # أكثر من 5 دقائق
+                step = 30 # تحديث كل 30 ثانية لضمان عدم الحظر
+            else: # 5 دقائق وأقل
+                step = 10 # تحديث كل 10 ثواني لزيادة الحماس
+
+            # لضمان عدم تجاوز الصفر في الخطوة الأخيرة
+            if step > seconds: step = seconds
             
             m, s = divmod(seconds, 60)
             h, m = divmod(m, 60)
@@ -88,7 +94,7 @@ async def timed_kick(event):
 
         # تنفيذ الطرد النهائي
         await client.kick_participant(event.chat_id, user_id)
-        await event.edit(f"• ⌯ **تم استبعاد {name} من المملكة بعد انتهاء الوقت!** ✅")
+        await event.edit(f"• ⌯ **تم استبعاد {name} من المملكة بنجاح!** ✅")
 
     except Exception as e:
         await event.edit(f"⚠️ **حدث خطأ:** `{str(e)}`")
