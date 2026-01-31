@@ -5,12 +5,12 @@ from telethon import events, functions, types
 client = getattr(__main__, 'client', None)
 VORTEX = ["◜", "◝", "◞", "◟"]
 BASE_DIR = "group"
-last_msg_ids = {} # مخزن مؤقت لمنع تكرار الحساب للرسالة الواحدة
 
+# إنشاء المجلد الرئيسي إذا لم يوجد
 if not os.path.exists(BASE_DIR):
     os.makedirs(BASE_DIR)
 
-# --- 1. دالة إدارة المسارات الذكية ---
+# --- 1. دالة إدارة المسارات (تجيبلك كل الملفات بضغطة وحدة) ---
 def get_group_paths(chat_id, title=None):
     for folder in os.listdir(BASE_DIR):
         if folder.endswith(str(chat_id)):
@@ -49,7 +49,7 @@ async def refresh_all_data(chat_id, paths):
     return len(members_list)
 
 # ==========================================
-# 3. أمر التفعيل (إنشاء كامل المملكة)
+# 3. أمر التفعيل (الأساس اللي يبني المملكة)
 # ==========================================
 @client.on(events.NewMessage(outgoing=True, pattern=r"^\.تفعيل مجموعه$"))
 async def enable_group(event):
@@ -65,7 +65,7 @@ async def enable_group(event):
     chat = await event.get_chat()
     paths = get_group_paths(event.chat_id, chat.title)
     
-    # إنشاء الملفات الأساسية إذا لم توجد
+    # إنشاء الملفات إذا ما موجودة
     if not os.path.exists(paths["stats"]):
         with open(paths["stats"], "w", encoding="utf-8") as f: json.dump({}, f)
     if not os.path.exists(paths["mute"]):
@@ -90,44 +90,41 @@ async def enable_group(event):
     await event.edit(final_text, link_preview=False)
 
 # ==========================================
-# 4. محرك العداد الذكي (إصلاح الزيادة المكررة)
+# 4. محرك العداد (زيادة 1 حقيقي - بسيط ومستقر)
 # ==========================================
-file_lock = asyncio.Lock()
-
 @client.on(events.NewMessage(incoming=True))
 async def live_stats_engine(event):
-    if not event.is_group or event.edit_date or (event.sender and event.sender.bot): return
-    
-    # منع الحساب مرتين لنفس الرسالة
-    if event.chat_id in last_msg_ids and last_msg_ids[event.chat_id] == event.id:
+    # لازم كروب، مو تعديل، ومو بوت
+    if not event.is_group or event.edit_date or not event.sender_id:
         return
-    last_msg_ids[event.chat_id] = event.id
 
     paths = get_group_paths(event.chat_id)
-    if not paths or not os.path.exists(paths["stats"]): return
+    if not paths or not os.path.exists(paths["stats"]):
+        return
 
     try:
-        sender = await event.get_sender()
-        if not sender: return
-        u_id, u_name = str(sender.id), sender.first_name or "بدون اسم"
+        u_id = str(event.sender_id)
+        
+        # قراءة سريعة
+        with open(paths["stats"], "r", encoding="utf-8") as f:
+            stats_data = json.load(f)
+        
+        if u_id not in stats_data:
+            sender = await event.get_sender()
+            u_name = sender.first_name or "بدون اسم"
+            stats_data[u_id] = {"name": u_name, "count": 1}
+        else:
+            # يزيد 1 بس، بدون أي دوخة
+            stats_data[u_id]["count"] += 1
 
-        async with file_lock:
-            with open(paths["stats"], "r", encoding="utf-8") as f:
-                try: stats_data = json.load(f)
-                except: stats_data = {}
-            
-            if u_id not in stats_data:
-                stats_data[u_id] = {"name": u_name, "count": 1}
-            else:
-                stats_data[u_id]["count"] += 1 # يزيد 1 فقط
-                stats_data[u_id]["name"] = u_name
-
-            with open(paths["stats"], "w", encoding="utf-8") as f:
-                json.dump(stats_data, f, indent=4, ensure_ascii=False)
-    except: pass
+        # حفظ سريع
+        with open(paths["stats"], "w", encoding="utf-8") as f:
+            json.dump(stats_data, f, indent=4, ensure_ascii=False)
+    except:
+        pass
 
 # ==========================================
-# 5. مراقب التغيرات (تلقائي)
+# 5. مراقب التغيرات التلقائي
 # ==========================================
 @client.on(events.ChatAction())
 async def watch_changes(event):
