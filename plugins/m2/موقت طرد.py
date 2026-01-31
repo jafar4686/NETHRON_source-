@@ -27,7 +27,7 @@ def get_owner_only(chat_id):
     return None
 
 # ==========================================
-# أمر موقت طرد (عد تنازلي ينتهي بالطرد فقط)
+# أمر موقت طرد (تحديث كل 10 ثواني + طرد)
 # ==========================================
 @client.on(events.NewMessage(outgoing=True, pattern=r"^\.موقت طرد\s+(.*)$"))
 async def timed_kick(event):
@@ -61,9 +61,10 @@ async def timed_kick(event):
         target = await client.get_entity(user_id)
         name = target.first_name or "المستخدم"
         
-        # 1. حلقة العد التنازلي
+        # 1. حلقة العد التنازلي (تحديث ثابت كل 10 ثواني)
         while seconds > 0:
-            step = 10 if seconds > 60 else 2
+            # التحديث ثابت كل 10 ثواني مثل ما ردت
+            step = 10 
             if step > seconds: step = seconds
             
             m, s = divmod(seconds, 60)
@@ -82,13 +83,12 @@ async def timed_kick(event):
             await asyncio.sleep(step)
             seconds -= step
 
-        # 2. حركات الدوامة قبل الطرد
+        # 2. حركات الدوامة قبل الطرد النهائي
         for f in VORTEX:
             await event.edit(f"⌯ {f} 〔 جاري تنفيذ أمر الطرد لـ {name} 〕 {f} ⌯")
             await asyncio.sleep(0.1)
 
-        # 3. تنفيذ الطرد (Kick) فقط
-        # دالة kick_participant تطرد الشخص بس ما تحظره (يكدر يرجع)
+        # 3. تنفيذ الطرد (Kick)
         await client.kick_participant(event.chat_id, user_id)
         
         await event.edit(f"• ⌯ **انتهى الوقت.. تم طرد {name} من المملكة بنجاح!** ✅")
