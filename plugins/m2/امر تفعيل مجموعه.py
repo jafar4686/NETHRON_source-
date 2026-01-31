@@ -5,13 +5,13 @@ from telethon import events, functions, types
 client = getattr(__main__, 'client', None)
 VORTEX = ["◜", "◝", "◞", "◟"]
 BASE_DIR = "group"
-processed_msgs = set() # مخزن بصمات الرسائل لمنع التكرار
+processed_msgs = set() # لمنع تكرار الحساب 100%
 
-# إنشاء المجلد الرئيسي إذا لم يوجد
+# إنشاء المجلد الرئيسي
 if not os.path.exists(BASE_DIR):
     os.makedirs(BASE_DIR)
 
-# --- 1. دالة إدارة المسارات الذكية ---
+# --- 1. دالة إدارة المسارات ---
 def get_group_paths(chat_id, title=None):
     for folder in os.listdir(BASE_DIR):
         if folder.endswith(str(chat_id)):
@@ -50,7 +50,7 @@ async def refresh_all_data(chat_id, paths):
     return len(members_list)
 
 # ==========================================
-# 3. أمر التفعيل (بناء سجلات المملكة)
+# 3. أمر التفعيل بالكليشة المطلوبة
 # ==========================================
 @client.on(events.NewMessage(outgoing=True, pattern=r"^\.تفعيل مجموعه$"))
 async def enable_group(event):
@@ -90,20 +90,20 @@ async def enable_group(event):
     await event.edit(final_text, link_preview=False)
 
 # ==========================================
-# 4. محرك العداد الذكي (حل مشكلة الفيديو - زيادة 1 فقط)
+# 4. محرك العداد (تعديل 100% - اسم | عدد)
 # ==========================================
 @client.on(events.NewMessage(incoming=True))
 async def live_stats_engine(event):
-    # الأساسيات: لازم مجموعة، مو تعديل، ومو بوت
+    # نفلتر: لازم كروب، مو تعديل، ومو بوت
     if not event.is_group or event.edit_date or not event.sender_id:
         return
 
-    # الحل الجذري: منع حساب رسائل السورس نفسه لمنع التكرار (2)
+    # أهم قفل: يتجاهل رسائل السورس نفسه لضمان عدم الزيادة 2
     me = await client.get_me()
     if event.sender_id == me.id:
         return
 
-    # بصمة الرسالة لمنع تكرار الحساب لنفس الحدث
+    # قفل البصمة لمنع تكرار نفس الرسالة
     msg_key = f"{event.chat_id}_{event.id}"
     if msg_key in processed_msgs:
         return
@@ -120,33 +120,31 @@ async def live_stats_engine(event):
         u_id = str(event.sender_id)
         
         with open(paths["stats"], "r", encoding="utf-8") as f:
-            try:
-                stats_data = json.load(f)
-            except:
-                stats_data = {}
+            try: stats_data = json.load(f)
+            except: stats_data = {}
         
         if u_id not in stats_data:
             sender = await event.get_sender()
             u_name = getattr(sender, 'first_name', "بدون اسم")
-            # الصيغة المطلوبة للتخزين: اسم الشخص | العدد
+            # الصيغة المطلوبة في stats.json
             stats_data[u_id] = {
                 "name": u_name,
                 "count": 1,
                 "full_info": f"{u_name} | 1"
             }
         else:
+            # زيادة حقيقية 1 فقط لكل رسالة جديدة
             stats_data[u_id]["count"] += 1
             u_name = stats_data[u_id]["name"]
             stats_data[u_id]["full_info"] = f"{u_name} | {stats_data[u_id]['count']}"
 
         with open(paths["stats"], "w", encoding="utf-8") as f:
             json.dump(stats_data, f, indent=4, ensure_ascii=False)
-            
     except:
         pass
 
 # ==========================================
-# 5. مراقب التغيرات التلقائي
+# 5. مراقب التغيرات (تلقائي)
 # ==========================================
 @client.on(events.ChatAction())
 async def watch_changes(event):
