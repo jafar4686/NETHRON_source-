@@ -6,11 +6,10 @@ client = getattr(__main__, 'client', None)
 VORTEX = ["◜", "◝", "◞", "◟"]
 BASE_DIR = "group"
 
-# إنشاء المجلد الرئيسي إذا لم يوجد
 if not os.path.exists(BASE_DIR):
     os.makedirs(BASE_DIR)
 
-# --- 1. دالة إدارة المسارات ---
+# --- 1. دالة إدارة المسارات (إضافة مسار mute) ---
 def get_group_paths(chat_id, title=None):
     for folder in os.listdir(BASE_DIR):
         if folder.endswith(str(chat_id)):
@@ -20,7 +19,8 @@ def get_group_paths(chat_id, title=None):
                 "owner": os.path.join(group_path, "owner.json"),
                 "admins": os.path.join(group_path, "admins.txt"),
                 "members": os.path.join(group_path, "all_members.txt"),
-                "stats": os.path.join(group_path, "stats.json")
+                "stats": os.path.join(group_path, "stats.json"),
+                "mute": os.path.join(group_path, "mute.json") # ملف الكتم الجديد
             }
     if title:
         safe_title = "".join([c for c in title if c.isalnum() or c in (' ', '_')]).strip()
@@ -30,7 +30,7 @@ def get_group_paths(chat_id, title=None):
         return get_group_paths(chat_id)
     return None
 
-# --- 2. دالة أرشفة البيانات (أعضاء + رتب) ---
+# --- 2. دالة أرشفة البيانات ---
 async def refresh_all_data(chat_id, paths):
     admins_list, members_list = [], []
     async for user in client.iter_participants(chat_id):
@@ -48,7 +48,7 @@ async def refresh_all_data(chat_id, paths):
     return len(members_list)
 
 # ==========================================
-# 3. أمر التفعيل (الكليشة الفخمة)
+# 3. أمر التفعيل (ينشئ mute.json تلقائياً)
 # ==========================================
 @client.on(events.NewMessage(outgoing=True, pattern=r"^\.تفعيل مجموعه$"))
 async def enable_group(event):
@@ -57,25 +57,28 @@ async def enable_group(event):
     if not p.is_creator: return await event.edit("⚠️ **هذا الأمر للمنشئ فقط!**")
 
     for f in VORTEX:
-        await event.edit(f"⌯ {f} 〔 جاري تهيئة ملفات المملكة 〕 {f} ⌯")
+        await event.edit(f"⌯ {f} 〔 جاري تهيئة سجلات المملكة 〕 {f} ⌯")
         await asyncio.sleep(0.1)
 
     me = await client.get_me()
     chat = await event.get_chat()
     paths = get_group_paths(event.chat_id, chat.title)
     
-    # إنشاء ملف الإحصائيات
+    # 1. إنشاء ملف الإحصائيات إذا لم يوجد
     if not os.path.exists(paths["stats"]):
         with open(paths["stats"], "w", encoding="utf-8") as f: json.dump({}, f)
 
-    # حفظ ملف المالك
+    # 2. إنشاء ملف الكتم تلقائياً (قائمة فارغة)
+    if not os.path.exists(paths["mute"]):
+        with open(paths["mute"], "w", encoding="utf-8") as f: json.dump([], f)
+
+    # 3. حفظ ملف المالك
     owner_info = {"name": me.first_name, "id": me.id, "rank": "المالك", "user": "@NETH_RON"}
     with open(paths["owner"], "w", encoding="utf-8") as f:
         json.dump(owner_info, f, indent=4, ensure_ascii=False)
 
     num = await refresh_all_data(event.chat_id, paths)
     
-    # الكليشة المطلوبة
     final_text = (
         "★────────☭────────★\n"
         "   ☭ • 𝐼𝑅𝐴𝑄𝑇𝐻𝑂𝑂𝑁 • ☭\n"
@@ -91,7 +94,6 @@ async def enable_group(event):
 # ==========================================
 # 4. محرك العداد الذكي (زيادة 1 فقط)
 # ==========================================
-# قفل عالمي لمنع تضارب الكتابة في الملفات
 file_lock = asyncio.Lock()
 
 @client.on(events.NewMessage(incoming=True))
@@ -122,13 +124,3 @@ async def live_stats_engine(event):
                 json.dump(stats_data, f, indent=4, ensure_ascii=False)
     except:
         pass
-
-# ==========================================
-# 5. مراقب التغيرات التلقائي
-# ==========================================
-@client.on(events.ChatAction())
-async def watch_changes(event):
-    if event.is_group and (event.new_admins or event.user_joined or event.user_left):
-        paths = get_group_paths(event.chat_id)
-        if paths and os.path.exists(paths["owner"]):
-            await refresh_all_data(event.chat_id, paths)
