@@ -1,15 +1,16 @@
 import __main__, asyncio, json, os
 from telethon import events, functions, types
 
-# استخراج الكلاينت
+# استخراج الكلاينت من الملف الرئيسي
 client = getattr(__main__, 'client', None)
 VORTEX = ["◜", "◝", "◞", "◟"]
 BASE_DIR = "group"
+last_msg_ids = {} # مخزن مؤقت لمنع تكرار الحساب للرسالة الواحدة
 
 if not os.path.exists(BASE_DIR):
     os.makedirs(BASE_DIR)
 
-# --- 1. دالة إدارة المسارات (إضافة مسار mute) ---
+# --- 1. دالة إدارة المسارات الذكية ---
 def get_group_paths(chat_id, title=None):
     for folder in os.listdir(BASE_DIR):
         if folder.endswith(str(chat_id)):
@@ -20,7 +21,7 @@ def get_group_paths(chat_id, title=None):
                 "admins": os.path.join(group_path, "admins.txt"),
                 "members": os.path.join(group_path, "all_members.txt"),
                 "stats": os.path.join(group_path, "stats.json"),
-                "mute": os.path.join(group_path, "mute.json") # ملف الكتم الجديد
+                "mute": os.path.join(group_path, "mute.json")
             }
     if title:
         safe_title = "".join([c for c in title if c.isalnum() or c in (' ', '_')]).strip()
@@ -30,7 +31,7 @@ def get_group_paths(chat_id, title=None):
         return get_group_paths(chat_id)
     return None
 
-# --- 2. دالة أرشفة البيانات ---
+# --- 2. دالة أرشفة البيانات (أعضاء + رتب) ---
 async def refresh_all_data(chat_id, paths):
     admins_list, members_list = [], []
     async for user in client.iter_participants(chat_id):
@@ -48,7 +49,7 @@ async def refresh_all_data(chat_id, paths):
     return len(members_list)
 
 # ==========================================
-# 3. أمر التفعيل (ينشئ mute.json تلقائياً)
+# 3. أمر التفعيل (إنشاء كامل المملكة)
 # ==========================================
 @client.on(events.NewMessage(outgoing=True, pattern=r"^\.تفعيل مجموعه$"))
 async def enable_group(event):
@@ -64,15 +65,12 @@ async def enable_group(event):
     chat = await event.get_chat()
     paths = get_group_paths(event.chat_id, chat.title)
     
-    # 1. إنشاء ملف الإحصائيات إذا لم يوجد
+    # إنشاء الملفات الأساسية إذا لم توجد
     if not os.path.exists(paths["stats"]):
         with open(paths["stats"], "w", encoding="utf-8") as f: json.dump({}, f)
-
-    # 2. إنشاء ملف الكتم تلقائياً (قائمة فارغة)
     if not os.path.exists(paths["mute"]):
         with open(paths["mute"], "w", encoding="utf-8") as f: json.dump([], f)
 
-    # 3. حفظ ملف المالك
     owner_info = {"name": me.first_name, "id": me.id, "rank": "المالك", "user": "@NETH_RON"}
     with open(paths["owner"], "w", encoding="utf-8") as f:
         json.dump(owner_info, f, indent=4, ensure_ascii=False)
@@ -92,35 +90,48 @@ async def enable_group(event):
     await event.edit(final_text, link_preview=False)
 
 # ==========================================
-# 4. محرك العداد الذكي (زيادة 1 فقط)
+# 4. محرك العداد الذكي (إصلاح الزيادة المكررة)
 # ==========================================
 file_lock = asyncio.Lock()
 
 @client.on(events.NewMessage(incoming=True))
 async def live_stats_engine(event):
-    if not event.is_group or event.edit_date: return
+    if not event.is_group or event.edit_date or (event.sender and event.sender.bot): return
     
+    # منع الحساب مرتين لنفس الرسالة
+    if event.chat_id in last_msg_ids and last_msg_ids[event.chat_id] == event.id:
+        return
+    last_msg_ids[event.chat_id] = event.id
+
     paths = get_group_paths(event.chat_id)
     if not paths or not os.path.exists(paths["stats"]): return
 
     try:
         sender = await event.get_sender()
-        if not sender or sender.bot: return
-
-        u_id = str(sender.id)
-        u_name = sender.first_name or "بدون اسم"
+        if not sender: return
+        u_id, u_name = str(sender.id), sender.first_name or "بدون اسم"
 
         async with file_lock:
             with open(paths["stats"], "r", encoding="utf-8") as f:
-                stats_data = json.load(f)
+                try: stats_data = json.load(f)
+                except: stats_data = {}
             
             if u_id not in stats_data:
                 stats_data[u_id] = {"name": u_name, "count": 1}
             else:
-                stats_data[u_id]["count"] += 0
+                stats_data[u_id]["count"] += 1 # يزيد 1 فقط
                 stats_data[u_id]["name"] = u_name
 
             with open(paths["stats"], "w", encoding="utf-8") as f:
                 json.dump(stats_data, f, indent=4, ensure_ascii=False)
-    except:
-        pass
+    except: pass
+
+# ==========================================
+# 5. مراقب التغيرات (تلقائي)
+# ==========================================
+@client.on(events.ChatAction())
+async def watch_changes(event):
+    if event.is_group and (event.new_admins or event.user_joined or event.user_left):
+        paths = get_group_paths(event.chat_id)
+        if paths and os.path.exists(paths["owner"]):
+            await refresh_all_data(event.chat_id, paths)
