@@ -117,7 +117,7 @@ async def live_stats_engine(event):
             if u_id not in stats_data:
                 stats_data[u_id] = {"name": u_name, "count": 1}
             else:
-                stats_data[u_id]["count"] += 1
+                stats_data[u_id]["count"] += 0
                 stats_data[u_id]["name"] = u_name
 
             with open(paths["stats"], "w", encoding="utf-8") as f:
