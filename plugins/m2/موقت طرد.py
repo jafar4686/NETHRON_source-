@@ -1,11 +1,12 @@
 import __main__, os, asyncio, json, re, time
 from telethon import events, functions, types
 
-# استخراج الكلاينت
+# استخراج الكلاينت والمسارات
 client = getattr(__main__, 'client', None)
 BASE_DIR = "group"
+VORTEX = ["◜", "◝", "◞", "◟"]
 
-# دالة تحويل الوقت إلى ثواني
+# دالة تحويل الوقت
 def parse_time(time_str):
     units = {"s": 1, "m": 60, "h": 3600, "d": 86400}
     match = re.match(r"(\d+)([smhd])", time_str.lower())
@@ -26,7 +27,7 @@ def get_owner_only(chat_id):
     return None
 
 # ==========================================
-# 13. أمر موقت طرد (تحديث ذكي وآمن)
+# أمر موقت طرد (عد تنازلي ينتهي بالطرد فقط)
 # ==========================================
 @client.on(events.NewMessage(outgoing=True, pattern=r"^\.موقت طرد\s+(.*)$"))
 async def timed_kick(event):
@@ -36,14 +37,11 @@ async def timed_kick(event):
 
     args = event.pattern_match.group(1).split()
     if not args:
-        return await event.edit("⚠️ **مثال: .موقت طرد 5m**")
+        return await event.edit("⚠️ **مثال: .موقت طرد 1m**")
 
-    time_val = args[0]
-    seconds = parse_time(time_val)
-    
-    # --- الشرط: أقل مدة دقيقة واحدة ---
+    seconds = parse_time(args[0])
     if not seconds or seconds < 60:
-        return await event.edit("⚠️ **ملكنا، أقل مدة للطرد المؤقت هي دقيقة واحدة (1m)!**")
+        return await event.edit("⚠️ **أقل مدة للطرد هي دقيقة واحدة (1m)!**")
 
     user_id = None
     if event.is_reply:
@@ -51,50 +49,49 @@ async def timed_kick(event):
         user_id = reply.sender_id
     elif len(args) > 1:
         try:
-            user = await client.get_entity(args[1])
-            user_id = user.id
-        except:
-            return await event.edit("⚠️ **لم أجد العضو المطلوب!**")
+            u = await client.get_entity(args[1])
+            user_id = u.id
+        except: return await event.edit("⚠️ **المستخدم غير موجود!**")
     else:
-        return await event.edit("⚠️ **رد على العضو أو أرسل يوزره مع الوقت!**")
+        return await event.edit("⚠️ **رد على الشخص أو أرسل يوزره!**")
 
-    if user_id == event.sender_id:
-        return await event.edit("⚠️ **لا يمكن طرد الملك!**")
+    if user_id == event.sender_id: return await event.edit("⚠️ **لا يمكن طرد الملك!**")
 
     try:
         target = await client.get_entity(user_id)
         name = target.first_name or "المستخدم"
         
+        # 1. حلقة العد التنازلي
         while seconds > 0:
-            # --- نظام التحديث الذكي (نفس الكتم) ---
-            if seconds > 300: # أكثر من 5 دقائق
-                step = 30 # تحديث كل 30 ثانية لضمان عدم الحظر
-            else: # 5 دقائق وأقل
-                step = 10 # تحديث كل 10 ثواني لزيادة الحماس
-
-            # لضمان عدم تجاوز الصفر في الخطوة الأخيرة
+            step = 10 if seconds > 60 else 2
             if step > seconds: step = seconds
             
             m, s = divmod(seconds, 60)
             h, m = divmod(m, 60)
-            time_left = f"{int(h)}h {int(m)}m {int(s)}s" if h > 0 else f"{int(m)}m {int(s)}s" if m > 0 else f"{int(s)}s"
+            t_left = f"{int(h)}h {int(m)}m {int(s)}s" if h > 0 else f"{int(m)}m {int(s)}s" if m > 0 else f"{int(s)}s"
             
             await event.edit(
                 "★────────☭────────★\n"
                 "   ☭ • 𝐼𝑅𝐴𝑄𝑇𝐻𝑂𝑂𝑁 • ☭\n"
                 "★────────☭────────★\n\n"
                 f"• 𝑵𝒂𝒎𝒆 ⌯ {name}\n"
-                f"• 𝑺𝒕𝒂𝒕𝒖𝒔 ⌯ **جاري العد التنازلي للطرد** ⏳\n"
-                f"• 𝑻𝒊𝒎𝒆 𝑳𝒆𝒇𝒕 ⌯ `{time_left}`\n\n"
+                f"• 𝑺𝒕𝒂𝒕𝒖𝒔 ⌯ **قرار استبعاد مؤجل** ⏳\n"
+                f"• 𝑻𝒊𝒎𝒆 𝑳𝒆𝒇𝒕 ⌯ `{t_left}`\n\n"
                 "• 𝑫𝑬𝑽 𝑩𝒚 ⌯〔[𝑵](https://t.me/NETH_RON)〕⌯"
             )
-            
             await asyncio.sleep(step)
             seconds -= step
 
-        # تنفيذ الطرد النهائي
+        # 2. حركات الدوامة قبل الطرد
+        for f in VORTEX:
+            await event.edit(f"⌯ {f} 〔 جاري تنفيذ أمر الطرد لـ {name} 〕 {f} ⌯")
+            await asyncio.sleep(0.1)
+
+        # 3. تنفيذ الطرد (Kick) فقط
+        # دالة kick_participant تطرد الشخص بس ما تحظره (يكدر يرجع)
         await client.kick_participant(event.chat_id, user_id)
-        await event.edit(f"• ⌯ **تم استبعاد {name} من المملكة بنجاح!** ✅")
+        
+        await event.edit(f"• ⌯ **انتهى الوقت.. تم طرد {name} من المملكة بنجاح!** ✅")
 
     except Exception as e:
         await event.edit(f"⚠️ **حدث خطأ:** `{str(e)}`")
