@@ -90,19 +90,26 @@ async def enable_group(event):
     await event.edit(final_text, link_preview=False)
 
 # ==========================================
-# 4. محرك العداد المعدل (خزن دقيق بصيغة اسم | عدد)
+# 4. محرك العداد الذكي (حل مشكلة الفيديو - زيادة 1 فقط)
 # ==========================================
 @client.on(events.NewMessage(incoming=True))
 async def live_stats_engine(event):
+    # الأساسيات: لازم مجموعة، مو تعديل، ومو بوت
     if not event.is_group or event.edit_date or not event.sender_id:
         return
 
+    # الحل الجذري: منع حساب رسائل السورس نفسه لمنع التكرار (2)
+    me = await client.get_me()
+    if event.sender_id == me.id:
+        return
+
+    # بصمة الرسالة لمنع تكرار الحساب لنفس الحدث
     msg_key = f"{event.chat_id}_{event.id}"
     if msg_key in processed_msgs:
         return
     processed_msgs.add(msg_key)
     
-    if len(processed_msgs) > 1000:
+    if len(processed_msgs) > 500:
         processed_msgs.clear()
 
     paths = get_group_paths(event.chat_id)
@@ -121,7 +128,7 @@ async def live_stats_engine(event):
         if u_id not in stats_data:
             sender = await event.get_sender()
             u_name = getattr(sender, 'first_name', "بدون اسم")
-            # الصيغة المطلوبة للتخزين
+            # الصيغة المطلوبة للتخزين: اسم الشخص | العدد
             stats_data[u_id] = {
                 "name": u_name,
                 "count": 1,
@@ -130,7 +137,6 @@ async def live_stats_engine(event):
         else:
             stats_data[u_id]["count"] += 1
             u_name = stats_data[u_id]["name"]
-            # تحديث السطر المخزن
             stats_data[u_id]["full_info"] = f"{u_name} | {stats_data[u_id]['count']}"
 
         with open(paths["stats"], "w", encoding="utf-8") as f:
