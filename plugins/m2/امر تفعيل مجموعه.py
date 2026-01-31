@@ -1,13 +1,14 @@
 import __main__, asyncio, json, os
 from telethon import events, functions, types
 
-# استخراج الكلاينت من الملف الرئيسي
+# استخراج الكلاينت
 client = getattr(__main__, 'client', None)
 VORTEX = ["◜", "◝", "◞", "◟"]
 BASE_DIR = "group"
-processed_msgs = set() # لمنع تكرار الحساب 100%
+processed_msgs = set()
+# القفل البرمجي لمنع التضارب في فتح الملف
+stats_lock = asyncio.Lock()
 
-# إنشاء المجلد الرئيسي
 if not os.path.exists(BASE_DIR):
     os.makedirs(BASE_DIR)
 
@@ -32,7 +33,7 @@ def get_group_paths(chat_id, title=None):
         return get_group_paths(chat_id)
     return None
 
-# --- 2. دالة أرشفة البيانات (أعضاء + رتب) ---
+# --- 2. دالة أرشفة البيانات ---
 async def refresh_all_data(chat_id, paths):
     admins_list, members_list = [], []
     async for user in client.iter_participants(chat_id):
@@ -50,16 +51,16 @@ async def refresh_all_data(chat_id, paths):
     return len(members_list)
 
 # ==========================================
-# 3. أمر التفعيل بالكليشة المطلوبة
+# 3. أمر التفعيل
 # ==========================================
 @client.on(events.NewMessage(outgoing=True, pattern=r"^\.تفعيل مجموعه$"))
 async def enable_group(event):
     if not event.is_group: return
     p = await client.get_permissions(event.chat_id, event.sender_id)
-    if not p.is_creator: return await event.edit("⚠️ **هذا الأمر للمنشئ فقط!**")
+    if not p.is_creator: return await event.edit("⚠️ **للمنشئ فقط!**")
 
     for f in VORTEX:
-        await event.edit(f"⌯ {f} 〔 جاري تهيئة سجلات المملكة 〕 {f} ⌯")
+        await event.edit(f"⌯ {f} 〔 جاري تهيئة المملكة 〕 {f} ⌯")
         await asyncio.sleep(0.1)
 
     me = await client.get_me()
@@ -90,65 +91,60 @@ async def enable_group(event):
     await event.edit(final_text, link_preview=False)
 
 # ==========================================
-# 4. محرك العداد (تعديل 100% - اسم | عدد)
+# 4. محرك العداد (نظام القفل والغلق السريع)
 # ==========================================
 @client.on(events.NewMessage(incoming=True))
 async def live_stats_engine(event):
-    # نفلتر: لازم كروب، مو تعديل، ومو بوت
     if not event.is_group or event.edit_date or not event.sender_id:
         return
 
-    # أهم قفل: يتجاهل رسائل السورس نفسه لضمان عدم الزيادة 2
+    # استثناء رسائل السورس لمنع تكرار الحساب الصادر/الوارد
     me = await client.get_me()
     if event.sender_id == me.id:
         return
 
-    # قفل البصمة لمنع تكرار نفس الرسالة
+    # بصمة الرسالة لمنع المعالجة المزدوجة
     msg_key = f"{event.chat_id}_{event.id}"
     if msg_key in processed_msgs:
         return
     processed_msgs.add(msg_key)
-    
-    if len(processed_msgs) > 500:
-        processed_msgs.clear()
 
     paths = get_group_paths(event.chat_id)
     if not paths or not os.path.exists(paths["stats"]):
         return
 
-    try:
-        u_id = str(event.sender_id)
-        
-        with open(paths["stats"], "r", encoding="utf-8") as f:
-            try: stats_data = json.load(f)
-            except: stats_data = {}
-        
-        if u_id not in stats_data:
-            sender = await event.get_sender()
-            u_name = getattr(sender, 'first_name', "بدون اسم")
-            # الصيغة المطلوبة في stats.json
-            stats_data[u_id] = {
-                "name": u_name,
-                "count": 1,
-                "full_info": f"{u_name} | 1"
-            }
-        else:
-            # زيادة حقيقية 1 فقط لكل رسالة جديدة
-            stats_data[u_id]["count"] += 1
-            u_name = stats_data[u_id]["name"]
-            stats_data[u_id]["full_info"] = f"{u_name} | {stats_data[u_id]['count']}"
+    # استخدام القفل (Lock) لضمان أن ملف واحد يفتح في كل مرة
+    async with stats_lock:
+        try:
+            u_id = str(event.sender_id)
+            
+            # فتح سريع جداً
+            with open(paths["stats"], "r", encoding="utf-8") as f:
+                try:
+                    stats_data = json.load(f)
+                except:
+                    stats_data = {}
+            
+            if u_id not in stats_data:
+                sender = await event.get_sender()
+                u_name = getattr(sender, 'first_name', "بدون اسم")
+                stats_data[u_id] = {
+                    "name": u_name,
+                    "count": 1,
+                    "full_info": f"{u_name} | 1"
+                }
+            else:
+                stats_data[u_id]["count"] += 1
+                u_name = stats_data[u_id]["name"]
+                stats_data[u_id]["full_info"] = f"{u_name} | {stats_data[u_id]['count']}"
 
-        with open(paths["stats"], "w", encoding="utf-8") as f:
-            json.dump(stats_data, f, indent=4, ensure_ascii=False)
-    except:
-        pass
-
-# ==========================================
-# 5. مراقب التغيرات (تلقائي)
-# ==========================================
-@client.on(events.ChatAction())
-async def watch_changes(event):
-    if event.is_group and (event.new_admins or event.user_joined or event.user_left):
-        paths = get_group_paths(event.chat_id)
-        if paths and os.path.exists(paths["owner"]):
-            await refresh_all_data(event.chat_id, paths)
+            # حفظ وغلق فوري للملف
+            with open(paths["stats"], "w", encoding="utf-8") as f:
+                json.dump(stats_data, f, indent=4, ensure_ascii=False)
+                
+        except:
+            pass
+    
+    # تنظيف الذاكرة
+    if len(processed_msgs) > 500:
+        processed_msgs.clear()
