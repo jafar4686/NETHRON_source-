@@ -66,13 +66,11 @@ async def enable_group(event):
     chat = await event.get_chat()
     paths = get_group_paths(event.chat_id, chat.title)
     
-    # إنشاء الملفات الأساسية (stats و mute) تلقائياً
     if not os.path.exists(paths["stats"]):
         with open(paths["stats"], "w", encoding="utf-8") as f: json.dump({}, f)
     if not os.path.exists(paths["mute"]):
         with open(paths["mute"], "w", encoding="utf-8") as f: json.dump([], f)
 
-    # حفظ بيانات المالك
     owner_info = {"name": me.first_name, "id": me.id, "rank": "المالك", "user": f"@{me.username}"}
     with open(paths["owner"], "w", encoding="utf-8") as f:
         json.dump(owner_info, f, indent=4, ensure_ascii=False)
@@ -92,21 +90,18 @@ async def enable_group(event):
     await event.edit(final_text, link_preview=False)
 
 # ==========================================
-# 4. محرك العداد الذكي (مراقبة الآيدي بدقة 100%)
+# 4. محرك العداد المعدل (خزن دقيق بصيغة اسم | عدد)
 # ==========================================
 @client.on(events.NewMessage(incoming=True))
 async def live_stats_engine(event):
-    # فلتر: لازم مجموعة، مو تعديل رسالة، ومو بوت
     if not event.is_group or event.edit_date or not event.sender_id:
         return
 
-    # منع تكرار الحساب لنفس الرسالة (نظام البصمة)
     msg_key = f"{event.chat_id}_{event.id}"
     if msg_key in processed_msgs:
         return
     processed_msgs.add(msg_key)
     
-    # تنظيف الذاكرة كل 1000 رسالة ليبقى السورس سريع
     if len(processed_msgs) > 1000:
         processed_msgs.clear()
 
@@ -117,18 +112,27 @@ async def live_stats_engine(event):
     try:
         u_id = str(event.sender_id)
         
-        # قراءة وتحديث البيانات
         with open(paths["stats"], "r", encoding="utf-8") as f:
-            stats_data = json.load(f)
+            try:
+                stats_data = json.load(f)
+            except:
+                stats_data = {}
         
         if u_id not in stats_data:
             sender = await event.get_sender()
             u_name = getattr(sender, 'first_name', "بدون اسم")
-            stats_data[u_id] = {"name": u_name, "count": 1}
+            # الصيغة المطلوبة للتخزين
+            stats_data[u_id] = {
+                "name": u_name,
+                "count": 1,
+                "full_info": f"{u_name} | 1"
+            }
         else:
-            stats_data[u_id]["count"] += 1 # يزيد 1 حقيقي لكل رسالة
+            stats_data[u_id]["count"] += 1
+            u_name = stats_data[u_id]["name"]
+            # تحديث السطر المخزن
+            stats_data[u_id]["full_info"] = f"{u_name} | {stats_data[u_id]['count']}"
 
-        # حفظ البيانات
         with open(paths["stats"], "w", encoding="utf-8") as f:
             json.dump(stats_data, f, indent=4, ensure_ascii=False)
             
@@ -136,7 +140,7 @@ async def live_stats_engine(event):
         pass
 
 # ==========================================
-# 5. مراقب التغيرات التلقائي (تحديث الرتب)
+# 5. مراقب التغيرات التلقائي
 # ==========================================
 @client.on(events.ChatAction())
 async def watch_changes(event):
