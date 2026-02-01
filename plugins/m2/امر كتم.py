@@ -20,29 +20,23 @@ def get_group_paths(chat_id):
             }
     return None
 
-# --- دالة فحص الصلاحية الذكية ---
+# --- دالة فحص الصلاحية ---
 async def check_permission(event, paths, action):
     uid = event.sender_id
-    # 1. إذا كان مالك المجموعة (له حق مطلق)
+    # فحص المالك أولاً
     with open(paths["owner"], "r", encoding="utf-8") as f:
         if json.load(f).get("id") == uid: return True
     
-    # 2. جلب رتبة الشخص من ملف الرتب
-    user_rank = None
+    # فحص الرتبة والصلاحية
     if os.path.exists(paths["ranks"]):
         with open(paths["ranks"], "r", encoding="utf-8") as f:
-            data = json.load(f)
-            if str(uid) in data:
-                user_rank = data[str(uid)]["rank"]
-    
-    if not user_rank: return False # ليس له رتبة
-
-    # 3. التحقق هل هذه الرتبة مسموح لها بهذا الفعل في ملف الصلاحيات
-    if os.path.exists(paths["perms"]):
-        with open(paths["perms"], "r", encoding="utf-8") as f:
-            perms = json.load(f)
-            return perms.get(user_rank, {}).get(action, False)
-    
+            ranks = json.load(f)
+            if str(uid) in ranks:
+                u_rank = ranks[str(uid)]["rank"]
+                if os.path.exists(paths["perms"]):
+                    with open(paths["perms"], "r", encoding="utf-8") as f:
+                        perms = json.load(f)
+                        return perms.get(u_rank, {}).get(action, False)
     return False
 
 # ==========================================
@@ -55,13 +49,13 @@ async def mute_user(event):
     paths = get_group_paths(event.chat_id)
     if not paths: return
     
-    # فحص هل الرتبة تملك صلاحية "كتم"
     if not await check_permission(event, paths, "كتم"):
         return await event.edit("⚠️ **عذراً، رتبتك لا تملك صلاحية الكتم!**")
 
     reply = await event.get_reply_message()
     u_id = str(reply.sender_id)
-    u_name = (await reply.get_sender()).first_name or "بدون اسم"
+    user = await reply.get_sender()
+    u_name = user.first_name or "Unknown"
 
     mute_data = []
     if os.path.exists(paths["mute"]):
@@ -69,8 +63,9 @@ async def mute_user(event):
             mute_data = json.load(f)
 
     if u_id in mute_data:
-        return await event.edit("⌯ **الشخص مكتوم من قبل!** ⌯")
+        return await event.edit("⚠️ **الشخص مكتوم بالفعل!**")
 
+    # تأثير الدوامة (Vortex)
     for f in VORTEX:
         await event.edit(f"⌯ {f} 〔 جاري كتم الشخص... 〕 {f} ⌯")
         await asyncio.sleep(0.1)
@@ -79,7 +74,8 @@ async def mute_user(event):
     with open(paths["mute"], "w", encoding="utf-8") as f:
         json.dump(mute_data, f, indent=4, ensure_ascii=False)
 
-    await event.edit(f"★────────☭────────★\n• **تم كتم المستخدم بنجاح** ✔\n• الـاسم ⌯ {u_name}\n• الايـدي ⌯ `{u_id}`\n★────────☭────────★")
+    # الكليشة الإنجليزية الأصلية
+    await event.edit(f"★────────☭────────★\n• 𝑴𝒖𝒕𝒆𝒅 𝑫𝒐𝒏𝒆 ✔\n• 𝑼𝒔𝒆𝒓 ⌯ {u_name}\n• 𝑰𝒅 ⌯ `{u_id}`\n★────────☭────────★")
 
 # ==========================================
 # 2. أمر فك الكتم (.فك كتم بالرد)
@@ -101,7 +97,7 @@ async def unmute_user(event):
         mute_data = json.load(f)
 
     if u_id not in mute_data:
-        return await event.edit("⚠️ **هذا الشخص غير مكتوم أصلاً!**")
+        return await event.edit("⚠️ **الشخص غير مكتوم!**")
 
     for f in VORTEX:
         await event.edit(f"⌯ {f} 〔 جاري فك الكتم... 〕 {f} ⌯")
@@ -111,10 +107,11 @@ async def unmute_user(event):
     with open(paths["mute"], "w", encoding="utf-8") as f:
         json.dump(mute_data, f, indent=4, ensure_ascii=False)
 
+    # الكليشة القديمة
     await event.edit("• ⌯ **تم فك الكتم عن الشخص بنجاح ✔**")
 
 # ==========================================
-# 3. المحرك (حذف رسائل المكتومين)
+# 3. المحرك (حذف الرسائل)
 # ==========================================
 @client.on(events.NewMessage(incoming=True))
 async def mute_engine(event):
