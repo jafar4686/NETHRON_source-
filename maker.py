@@ -5,7 +5,6 @@ from datetime import datetime, timedelta
 from config import api_id, api_hash
 
 # --- [1] الإعدادات الأساسية ---
-# ملاحظة: يفضل وضع التوكن في ملف config.py للأمان
 BOT_TOKEN = "8136996400:AAEO4uDFUweXXiz49bs91hI_jmvBqh8CStI"
 SESSION_DB = "database.txt" 
 USERS_DB = "nethron_vips.json"
@@ -14,7 +13,7 @@ SUDO_IDS = [5580918933, 7273666832]
 
 bot = TelegramClient('MakerBot', api_id, api_hash).start(bot_token=BOT_TOKEN)
 
-# --- [2] نظام تشغيل الأوامر ---
+# --- [2] نظام تشغيل الأوامر (إصلاح AttributeError) ---
 async def load_plugins(user_client):
     files = glob.glob("plugins/**/*.py", recursive=True)
     for f in files:
@@ -96,6 +95,7 @@ async def start(event):
     is_vip, _, _ = check_vip(event.sender_id)
     url = random.choice(["https://t.me/NETH_RON", "https://t.me/xxnnxg"])
     
+    # هنا رجعت زر الشراء للحالتين (مفعل أو غير مفعل)
     if is_vip:
         btns = [
             [Button.inline("📱 فتح لوحة التحكم", data="panel")],
@@ -115,39 +115,7 @@ async def cb(event):
     is_vip, _, _ = check_vip(uid)
     data = event.data.decode()
 
-    # --- لوحة التحكم الرئيسية ---
-    if data == "panel" and is_vip:
-        btns = [
-            [Button.inline("⚙️ صلاحيات الرتب", data="manage_ranks")],
-            [Button.inline("➕ إضافة حساب", data="add"), Button.inline("🔄 ريستارت", data="restart")]
-        ]
-        await event.edit("Welcome to Nethron Control Panel 🛡\nإختر أحد الخيارات للتحكم في حساباتك:", buttons=btns)
-
-    # --- لوحة الرتب (تجريبية) ---
-    elif data == "manage_ranks" and is_vip:
-        btns = [
-            [Button.inline("🛡 صلاحيات المدير", data="rank_manager")],
-            [Button.inline("👮 صلاحيات الأدمن", data="rank_admin")],
-            [Button.inline("⭐ صلاحيات المميز", data="rank_vip")],
-            [Button.inline("⬅️ رجوع", data="panel")]
-        ]
-        await event.edit("⚙️ **إعدادات صلاحيات الرتب**\nإختر الرتبة لتعديل ميزاتها الافتراضية بالكروبات:", buttons=btns)
-
-    # --- تفاصيل صلاحيات المدير (تجريبية) ---
-    elif data == "rank_manager" and is_vip:
-        btns = [
-            [Button.inline("❌ الطرد: معطل", data="noop"), Button.inline("✅ الكتم: مفعل", data="noop")],
-            [Button.inline("❌ الحظر: معطل", data="noop"), Button.inline("✅ التثبيت: مفعل", data="noop")],
-            [Button.inline("⬅️ رجوع", data="manage_ranks")]
-        ]
-        await event.edit("🛠 **إعدادات رتبة [ المدير ]**\nهذه الصلاحيات سيتم تطبيقها تلقائياً عند رفع أي شخص مدير:", buttons=btns)
-
-    # --- التنبيه التجريبي ---
-    elif data == "noop":
-        await event.answer("⚠️ ميزة تجريبية: سيتم ربطها بملف الرتب قريباً!", alert=True)
-
-    # --- الأوامر الأصلية للبوت ---
-    elif data == "activate":
+    if data == "activate":
         async with bot.conversation(event.chat_id, timeout=300) as conv:
             await conv.send_message("🎟️ **أرسل كود التفعيل الخاص بك:**")
             res = await conv.get_response()
@@ -159,31 +127,32 @@ async def cb(event):
                 await conv.send_message(f"✅ تم التفعيل بنجاح!")
             else: await conv.send_message("❌ كود خاطئ!")
 
+    elif data == "panel" and is_vip:
+        btns = [[Button.inline("➕ إضافة حساب", data="add")], [Button.inline("🔄 ريستارت", data="restart")]]
+        await event.edit("⚙️ **لوحة التحكم الأصلية**", buttons=btns)
+
     elif data == "add" and is_vip:
         async with bot.conversation(event.chat_id, timeout=300) as conv:
             await conv.send_message("📱 **أرسل الرقم مع رمز الدولة:**")
             try:
                 p_res = await conv.get_response()
                 phone = p_res.text.replace(" ", "")
-                # استخدام StringSession جديد للربط
-                temp_client = TelegramClient(StringSession(), api_id, api_hash)
-                await temp_client.connect()
-                await temp_client.send_code_request(phone)
+                client = TelegramClient(StringSession(), api_id, api_hash)
+                await client.connect()
+                await client.send_code_request(phone)
                 await conv.send_message("📥 **أرسل الكود:**")
                 c_res = await conv.get_response()
-                await temp_client.sign_in(phone, c_res.text)
-                with open(SESSION_DB, "a") as f: f.write(temp_client.session.save() + "\n")
-                await load_plugins(temp_client)
-                asyncio.create_task(temp_client.run_until_disconnected())
+                await client.sign_in(phone, c_res.text)
+                with open(SESSION_DB, "a") as f: f.write(client.session.save() + "\n")
+                await load_plugins(client)
+                asyncio.create_task(client.run_until_disconnected())
                 await conv.send_message("✅ **تم الربط وتشغيل الأوامر!**")
             except Exception as e: await conv.send_message(f"❌ خطأ: {e}")
 
     elif data == "restart" and uid in SUDO_IDS:
-        await event.respond("🔄 جاري إعادة تشغيل السورس...")
         os.execl(sys.executable, sys.executable, *sys.argv)
 
 # --- [6] الانطلاق ---
 loop = asyncio.get_event_loop()
 loop.create_task(start_all_accounts())
-print("🛡 Maker Bot is Running...")
 bot.run_until_disconnected()
