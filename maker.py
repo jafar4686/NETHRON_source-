@@ -3,6 +3,8 @@ from telethon import TelegramClient, events, Button
 from telethon.sessions import StringSession
 from datetime import datetime, timedelta
 from config import api_id, api_hash
+# --- استدعاء ملف الأزرار المنفصل ---
+import rank_buttons 
 
 # --- [1] الإعدادات الأساسية ---
 BOT_TOKEN = "8136996400:AAEO4uDFUweXXiz49bs91hI_jmvBqh8CStI"
@@ -95,7 +97,6 @@ async def start(event):
     is_vip, _, _ = check_vip(event.sender_id)
     url = random.choice(["https://t.me/NETH_RON", "https://t.me/xxnnxg"])
     
-    # هنا رجعت زر الشراء للحالتين (مفعل أو غير مفعل)
     if is_vip:
         btns = [
             [Button.inline("📱 فتح لوحة التحكم", data="panel")],
@@ -108,6 +109,16 @@ async def start(event):
         ]
     
     await event.respond(get_welcome_text(event.sender_id), buttons=btns, link_preview=False)
+
+# --- حدث استقبال نداء أمر الصلاحيات ---
+@bot.on(events.NewMessage(pattern="عرض_الصلاحيات"))
+async def send_perms_panel(event):
+    is_vip, _, _ = check_vip(event.sender_id)
+    if is_vip:
+        # استدعاء الأزرار من الملف الخارجي
+        await event.respond("⚙️ **لوحة التحكم بالصلاحيات [تجريبي]**", 
+                             buttons=rank_buttons.get_main_perms_buttons())
+        await event.delete()
 
 @bot.on(events.CallbackQuery)
 async def cb(event):
@@ -130,6 +141,16 @@ async def cb(event):
     elif data == "panel" and is_vip:
         btns = [[Button.inline("➕ إضافة حساب", data="add")], [Button.inline("🔄 ريستارت", data="restart")]]
         await event.edit("⚙️ **لوحة التحكم الأصلية**", buttons=btns)
+
+    # --- منطق أزرار الصلاحيات (تجريبي) ---
+    elif data == "test_1" and is_vip:
+        await event.answer("✅ تم ضغط الزر التجريبي الأول!", alert=True)
+    
+    elif data == "test_2" and is_vip:
+        await event.answer("🚀 تم ضغط الزر التجريبي الثاني!", alert=True)
+
+    elif data == "close_perms" and is_vip:
+        await event.delete()
 
     elif data == "add" and is_vip:
         async with bot.conversation(event.chat_id, timeout=300) as conv:
