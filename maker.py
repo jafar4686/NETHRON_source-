@@ -3,6 +3,7 @@ from telethon import TelegramClient, events, Button
 from telethon.sessions import StringSession
 from datetime import datetime, timedelta
 from config import api_id, api_hash
+import rank_logic  # استدعاء ملف المنطق
 
 # --- [1] الإعدادات الأساسية ---
 BOT_TOKEN = "8136996400:AAEO4uDFUweXXiz49bs91hI_jmvBqh8CStI"
@@ -83,9 +84,6 @@ def get_welcome_text(uid):
         "⦿ أهلاً بك في نظام التنصيب الذكي\n"
         "⦿ سورس نيثرون يوفر لك أقوى حماية\n"
         "⦿ ميزات حصرية وتشفير كامل للبيانات\n"
-        "◆━━━━━━━━━━━━━━━━━◆\n"
-        "◈➥ [𝑫𝑬𝑽〔المطور〕](https://t.me/NETH_RON)\n"
-        "◈➥ [𝑫𝑬𝑽〔المطور〕](https://t.me/xxnnxg)\n"
         "◆━━━━━━━━━━━━━━━━━◆"
     )
 
@@ -95,17 +93,10 @@ async def start(event):
     is_vip, _, _ = check_vip(event.sender_id)
     url = random.choice(["https://t.me/NETH_RON", "https://t.me/xxnnxg"])
     
-    # هنا رجعت زر الشراء للحالتين (مفعل أو غير مفعل)
     if is_vip:
-        btns = [
-            [Button.inline("📱 فتح لوحة التحكم", data="panel")],
-            [Button.url("🛒 شراء كود", url=url)]
-        ]
+        btns = [[Button.inline("📱 فتح لوحة التحكم", data="panel")], [Button.url("🛒 شراء كود", url=url)]]
     else:
-        btns = [
-            [Button.inline("🔑 تفعيل الاشتراك", data="activate")],
-            [Button.url("🛒 شراء كود", url=url)]
-        ]
+        btns = [[Button.inline("🔑 تفعيل الاشتراك", data="activate")], [Button.url("🛒 شراء كود", url=url)]]
     
     await event.respond(get_welcome_text(event.sender_id), buttons=btns, link_preview=False)
 
@@ -124,12 +115,32 @@ async def cb(event):
                 d = json.load(open(USERS_DB)) if os.path.exists(USERS_DB) else {}
                 d[str(uid)] = (datetime.now() + timedelta(days=days)).isoformat()
                 json.dump(d, open(USERS_DB, "w"), indent=4)
-                await conv.send_message(f"✅ تم التفعيل بنجاح!")
+                await conv.send_message("✅ تم التفعيل بنجاح!")
             else: await conv.send_message("❌ كود خاطئ!")
 
     elif data == "panel" and is_vip:
-        btns = [[Button.inline("➕ إضافة حساب", data="add")], [Button.inline("🔄 ريستارت", data="restart")]]
+        btns = [
+            [Button.inline("⚙️ صلاحيات الرتب", data="manage_ranks")],
+            [Button.inline("➕ إضافة حساب", data="add")], 
+            [Button.inline("🔄 ريستارت", data="restart")]
+        ]
         await event.edit("⚙️ **لوحة التحكم الأصلية**", buttons=btns)
+
+    # --- إدارة الصلاحيات باستخدام الملف المنفصل ---
+    elif data == "manage_ranks" and is_vip:
+        await event.edit("⚙️ **إعدادات الرتب:**", buttons=rank_logic.get_rank_buttons())
+
+    elif data.startswith("rank_") and is_vip:
+        rank_name = data.split("_")[1]
+        await event.edit(f"🛠 **صلاحيات رتبة {rank_name}:**", buttons=rank_logic.get_permission_buttons(rank_name))
+
+    elif data.startswith("tog_") and is_vip:
+        _, r_name, p_key = data.split("_")
+        perms = rank_logic.load_perms()
+        perms[r_name][p_key] = not perms[r_name][p_key]
+        rank_logic.save_perms(perms)
+        await event.edit(f"🛠 **صلاحيات رتبة {r_name}:**", buttons=rank_logic.get_permission_buttons(r_name))
+        await event.answer("✅ تم التحديث")
 
     elif data == "add" and is_vip:
         async with bot.conversation(event.chat_id, timeout=300) as conv:
@@ -150,6 +161,7 @@ async def cb(event):
             except Exception as e: await conv.send_message(f"❌ خطأ: {e}")
 
     elif data == "restart" and uid in SUDO_IDS:
+        await event.respond("🔄 جاري إعادة تشغيل السورس...")
         os.execl(sys.executable, sys.executable, *sys.argv)
 
 # --- [6] الانطلاق ---
