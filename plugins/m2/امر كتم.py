@@ -6,17 +6,12 @@ client = getattr(__main__, 'client', None)
 VORTEX = ["◜", "◝", "◞", "◟"]
 BASE_DIR = "group"
 
-# 1. موازين القوة (الهرمية)
+# 1. موازين القوة (الهرمية الأساسية للسورس)
 RANK_POWER = {
-    "عضو": 0,
-    "مميز": 1,
-    "ادمن": 2,
-    "مدير": 3,
-    "مطور": 4,
-    "owner": 5  # المالك (أنت)
+    "عضو": 0, "مميز": 1, "ادمن": 2, "مدير": 3, "مطور": 4, "owner": 5
 }
 
-# --- دالة جلب المسارات ---
+# --- دالة جلب المسارات الموحدة ---
 def get_group_paths(chat_id):
     if not os.path.exists(BASE_DIR): os.makedirs(BASE_DIR)
     for folder in os.listdir(BASE_DIR):
@@ -30,11 +25,11 @@ def get_group_paths(chat_id):
             }
     return None
 
-# --- دالة فحص الهرمية والصلاحية (العقل المدبر) ---
+# --- العقل المدبر: فحص الهرمية والصلاحية ---
 async def check_admin_logic(event, paths, target_id, action):
     sender_id = event.sender_id
     
-    # جلب رتبة المنفذ (أنت أو رتبتك بالسورس)
+    # تحديد رتبة المنفذ
     s_rank = "عضو"
     if os.path.exists(paths["owner"]):
         with open(paths["owner"], "r") as f:
@@ -45,7 +40,7 @@ async def check_admin_logic(event, paths, target_id, action):
             ranks = json.load(f)
             s_rank = ranks.get(str(sender_id), {}).get("rank", "عضو")
 
-    # 1. فحص هل الرتبة عندها صلاحية (كتم/فك كتم) من ملف الصلاحيات
+    # 1. فحص الصلاحية من لوحة التحكم (permissions.json)
     if s_rank != "owner":
         if os.path.exists(paths["perms"]):
             with open(paths["perms"], "r") as f:
@@ -55,7 +50,7 @@ async def check_admin_logic(event, paths, target_id, action):
                     return False
         else: return False
 
-    # 2. فحص الهرمية (مقارنة الرتب)
+    # 2. فحص الهرمية (مقارنة رتبة المنفذ بالهدف)
     t_rank = "عضو"
     if os.path.exists(paths["owner"]):
         with open(paths["owner"], "r") as f:
@@ -67,7 +62,7 @@ async def check_admin_logic(event, paths, target_id, action):
             t_rank = ranks.get(str(target_id), {}).get("rank", "عضو")
 
     if RANK_POWER[s_rank] <= RANK_POWER[t_rank] and s_rank != "owner":
-        msg = await event.edit(f"⚠️ **لا يمكنك {action} رتبة اعلى منك او مساوية لك ({t_rank})!**")
+        msg = await event.edit(f"⚠️ **لا يمكنك {action} رتبة أعلى منك أو مساوية لك ({t_rank})!**")
         await asyncio.sleep(10)
         await msg.delete()
         return False
@@ -87,7 +82,6 @@ async def mute_user(event):
     reply = await event.get_reply_message()
     target_id = reply.sender_id
 
-    # تشغيل المنطق الهرمي
     if not await check_admin_logic(event, paths, target_id, "كتم"):
         return
 
@@ -97,16 +91,16 @@ async def mute_user(event):
         with open(paths["mute"], "r") as f: mute_data = json.load(f)
 
     if u_id in mute_data:
-        return await event.edit("⚠️ **هذا الشخص ملجوم بالفعل!**")
+        return await event.edit("⚠️ **هذا الشخص ملجوم بالفعل في المملكة!**")
 
     for f in VORTEX:
-        await event.edit(f"⌯ {f} 〔 جاري تنفيذ الكتم الهرمي 〕 {f} ⌯")
+        await event.edit(f"⌯ {f} 〔 جاري تنفيذ حكم الصمت الهرمي 〕 {f} ⌯")
         await asyncio.sleep(0.1)
 
     mute_data.append(u_id)
     with open(paths["mute"], "w") as f: json.dump(mute_data, f)
 
-    await event.edit(f"★────────☭────────★\n   ☭ • 𝑴𝑼𝑻𝑬𝑫 𝑫𝑶𝑵𝑬 • ☭\n★────────☭────────★\n• تم كتمه وكسر رتبته بنجاح ✅")
+    await event.edit(f"★────────☭────────★\n   ☭ • 𝑴𝑼𝑻𝑬𝑫 𝑫𝑶𝑵𝑬 • ☭\n★────────☭────────★\n• **تم لجمه وكسر رتبته بنجاح!** 🤐")
 
 # ==========================================
 # 2. أمر فك الكتم (.فك كتم بالرد)
@@ -116,28 +110,36 @@ async def unmute_user(event):
     if not event.is_group or not event.is_reply: return
     
     paths = get_group_paths(event.chat_id)
-    reply = await event.get_reply_message()
+    if not paths: return
     
-    if not await check_admin_logic(event, paths, reply.sender_id, "فك كتم"):
+    reply = await event.get_reply_message()
+    target_id = reply.sender_id
+    
+    if not await check_admin_logic(event, paths, target_id, "فك كتم"):
         return
 
-    u_id = str(reply.sender_id)
+    u_id = str(target_id)
     if os.path.exists(paths["mute"]):
         with open(paths["mute"], "r") as f: mute_data = json.load(f)
         if u_id in mute_data:
             mute_data.remove(u_id)
             with open(paths["mute"], "w") as f: json.dump(mute_data, f)
-            await event.edit("• ⌯ **تم فك الكتم، خلي يحجي هسة ✔**")
+            await event.edit("• ⌯ **تم إصدار عفو ملكي وفك الكتم بنجاح!** ✅")
         else:
-            await event.edit("⚠️ **الشخص مو مكتوم أصلاً!**")
+            await event.edit("⚠️ **الشخص ليس في سجن المكتومين!**")
 
 # ==========================================
-# 3. محرك الحذف (الشغال)
+# 3. محرك الصمت (حذف رسائل المكتومين)
 # ==========================================
 @client.on(events.NewMessage(incoming=True))
 async def mute_engine(event):
+    if not event.is_group: return
     paths = get_group_paths(event.chat_id)
     if paths and os.path.exists(paths["mute"]):
         with open(paths["mute"], "r") as f:
-            if str(event.sender_id) in json.load(f):
-                await event.delete()
+            mutes = json.load(f)
+            if str(event.sender_id) in mutes:
+                try:
+                    await event.delete()
+                except:
+                    pass
