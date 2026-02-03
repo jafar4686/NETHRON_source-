@@ -1,14 +1,23 @@
 import __main__, os, asyncio, json
 from telethon import events, functions, types
 
-# استخراج الكلاينت
 client = getattr(__main__, 'client', None)
 BASE_DIR = "group"
 VORTEX = ["◜", "◝", "◞", "◟"]
 
-# --- دالة جلب المسارات وفحص الصلاحية ---
+# 1. موازين القوة (الهرمية)
+RANK_POWER = {
+    "عضو": 0,
+    "مميز": 1,
+    "ادمن": 2,
+    "مدير": 3,
+    "مطور": 4,
+    "owner": 5  # صاحب السورس (أنت)
+}
+
+# --- دالة جلب المسارات ---
 def get_group_paths(chat_id):
-    if not os.path.exists(BASE_DIR): return None
+    if not os.path.exists(BASE_DIR): os.makedirs(BASE_DIR)
     for folder in os.listdir(BASE_DIR):
         if folder.endswith(str(chat_id)):
             gp = os.path.join(BASE_DIR, folder)
@@ -20,81 +29,98 @@ def get_group_paths(chat_id):
             }
     return None
 
-async def can_ban(event, paths):
-    uid = event.sender_id
-    # 1. المالك (حق مطلق)
+# --- دالة فحص الهرمية والصلاحية للحظر ---
+async def check_ban_logic(event, paths, target_id):
+    sender_id = event.sender_id
+    
+    # جلب رتبة المنفذ
+    s_rank = "عضو"
     if os.path.exists(paths["owner"]):
-        with open(paths["owner"], "r", encoding="utf-8") as f:
-            if json.load(f).get("id") == uid: return True
-            
-    # 2. فحص الرتبة (عدا المميز) والصلاحية
-    if os.path.exists(paths["ranks"]):
-        with open(paths["ranks"], "r", encoding="utf-8") as f:
+        with open(paths["owner"], "r") as f:
+            if json.load(f).get("id") == sender_id: s_rank = "owner"
+    if s_rank != "owner" and os.path.exists(paths["ranks"]):
+        with open(paths["ranks"], "r") as f:
             ranks = json.load(f)
-            if str(uid) in ranks:
-                u_rank = ranks[str(uid)]["rank"]
-                if u_rank == "مميز": return False
-                
-                if os.path.exists(paths["perms"]):
-                    with open(paths["perms"], "r", encoding="utf-8") as f:
-                        perms = json.load(f)
-                        return perms.get(u_rank, {}).get("حظر", False)
-    return False
+            s_rank = ranks.get(str(sender_id), {}).get("rank", "عضو")
+
+    # 1. فحص الصلاحية من ملف permissions.json
+    if s_rank != "owner":
+        if os.path.exists(paths["perms"]):
+            with open(paths["perms"], "r") as f:
+                perms = json.load(f)
+                if not perms.get(s_rank, {}).get("حظر", False):
+                    await event.edit(f"⚠️ **رتبتك ({s_rank}) لا تملك صلاحية الحظر!**")
+                    return False
+        else: return False
+
+    # 2. فحص الهرمية (مقارنة القوة)
+    t_rank = "عضو"
+    if os.path.exists(paths["owner"]):
+        with open(paths["owner"], "r") as f:
+            if json.load(f).get("id") == target_id: t_rank = "owner"
+    if t_rank != "owner" and os.path.exists(paths["ranks"]):
+        with open(paths["ranks"], "r") as f:
+            ranks = json.load(f)
+            t_rank = ranks.get(str(target_id), {}).get("rank", "عضو")
+
+    if RANK_POWER[s_rank] <= RANK_POWER[t_rank] and s_rank != "owner":
+        msg = await event.edit(f"⚠️ **لا يمكنك حظر رتبة اعلى منك او مساوية لك ({t_rank})!**")
+        await asyncio.sleep(10)
+        await msg.delete()
+        return False
+        
+    return True
 
 # ==========================================
-# 1. أمر الحظر المربوط (.حظر بالرد)
+# 1. أمر الحظر الهرمي (.حظر بالرد)
 # ==========================================
 @client.on(events.NewMessage(outgoing=True, pattern=r"^\.حظر$"))
 async def ban_user(event):
-    if not event.is_group: return
+    if not event.is_group or not event.is_reply:
+        return await event.edit("⚠️ **استخدم الأمر بالرد على الشخص!**")
     
     paths = get_group_paths(event.chat_id)
     if not paths: return
-    
-    # فحص الصلاحية
-    if not await can_ban(event, paths):
-        return await event.edit("⚠️ **عذراً، رتبتك لا تملك صلاحية الحظر!**")
-
-    if not event.is_reply:
-        return await event.edit("⚠️ **رد على الشخص لحظره نهائياً!**")
 
     reply_msg = await event.get_reply_message()
-    user_id = reply_msg.sender_id
-    if user_id == event.sender_id: return await event.edit("⚠️ **لا يمكن حظر الملك!**")
+    target_id = reply_msg.sender_id
+
+    # تشغيل منطق الهرمية
+    if not await check_ban_logic(event, paths, target_id):
+        return
 
     try:
-        user = await client.get_entity(user_id)
+        user = await client.get_entity(target_id)
         name = user.first_name or "المستخدم"
 
-        # دوامة الفورتكس
         for f in VORTEX:
-            await event.edit(f"⌯ {f} 〔 جاري الحظر والتدوين في السجلات 〕 {f} ⌯")
+            await event.edit(f"⌯ {f} 〔 جاري الحظر حسب الهرمية 〕 {f} ⌯")
             await asyncio.sleep(0.1)
 
-        # 1. الحظر من تليجرام
+        # الحظر الرسمي من تليجرام
         await client(functions.channels.EditBannedRequest(
-            event.chat_id, user_id, 
+            event.chat_id, target_id, 
             types.ChatBannedRights(until_date=None, view_messages=True)
         ))
         
-        # 2. التدوين في ban.json (الرادار)
+        # التدوين في سجل المحظورين (الرادار)
         ban_list = []
         if os.path.exists(paths["ban_file"]):
             with open(paths["ban_file"], "r", encoding="utf-8") as f:
                 ban_list = json.load(f)
         
-        if user_id not in ban_list:
-            ban_list.append(user_id)
+        if target_id not in ban_list:
+            ban_list.append(target_id)
             with open(paths["ban_file"], "w", encoding="utf-8") as f:
                 json.dump(ban_list, f)
 
         final_text = (
             "★────────☭────────★\n"
-            "   ☭ • 𝐼𝑅𝐴𝑄𝑇𝐻𝑂𝑂𝑁 • ☭\n"
+            "   ☭ • 𝐼𝑅𝐴𝑄𝑇𝐻𝑂𝑂𝑁 𝑩𝑨𝑵 • ☭\n"
             "★────────☭────────★\n\n"
             f"• 𝑵𝒂𝒎𝒆 ⌯ {name}\n"
-            f"• 𝑰𝒅 ⌯ `{user_id}`\n"
-            "• 𝑺𝒕𝒂𝒕𝒖𝒔 ⌯ **𝑩𝒂𝒏𝒏𝒆𝒅 𝑫𝒐𝒏𝒆** 🚫\n\n"
+            f"• 𝑰𝒅 ⌯ `{target_id}`\n"
+            "• 𝑺𝒕𝒂𝒕𝒖𝒔 ⌯ **تم نفيه من المملكة** 🚫\n\n"
             "• 𝑫𝑬𝑽 𝑩𝒚 ⌯〔[𝑵](https://t.me/NETH_RON)〕⌯"
         )
         await event.edit(final_text)
@@ -103,7 +129,7 @@ async def ban_user(event):
         await event.edit(f"⚠️ **فشل الحظر:** `{str(e)}`")
 
 # ==========================================
-# 2. رادار الطرد التلقائي (المراقبة المستمرة)
+# 2. رادار المراقبة (منع المحظورين من العودة)
 # ==========================================
 @client.on(events.ChatAction())
 async def auto_kick_banned(event):
@@ -116,5 +142,4 @@ async def auto_kick_banned(event):
             if event.user_id in ban_list:
                 try:
                     await client.kick_participant(event.chat_id, event.user_id)
-                    await event.reply(f"⚠️ **المحظر آيديه `{event.user_id}` حاول الدخول وتم طرده فوراً!**")
                 except: pass
