@@ -1,10 +1,15 @@
-import __main__, os, asyncio, json, re, time
+import __main__, os, asyncio, json, re
 from telethon import events, functions, types
 
 # استخراج الكلاينت والمسارات
 client = getattr(__main__, 'client', None)
 BASE_DIR = "group"
 VORTEX = ["◜", "◝", "◞", "◟"]
+
+# 1. موازين القوة (الهرمية)
+RANK_POWER = {
+    "عضو": 0, "مميز": 1, "ادمن": 2, "مدير": 3, "مطور": 4, "owner": 5
+}
 
 # دالة تحويل الوقت
 def parse_time(time_str):
@@ -15,34 +20,78 @@ def parse_time(time_str):
         return int(val) * units[unit]
     return None
 
-# دالة التأكد من المالك
-def get_owner_only(chat_id):
-    if not os.path.exists(BASE_DIR): return None
+# دالة جلب المسارات الموحدة
+def get_all_paths(chat_id):
+    if not os.path.exists(BASE_DIR): os.makedirs(BASE_DIR)
     for folder in os.listdir(BASE_DIR):
         if folder.endswith(str(chat_id)):
-            owner_path = os.path.join(BASE_DIR, folder, "owner.json")
-            if os.path.exists(owner_path):
-                with open(owner_path, "r", encoding="utf-8") as f:
-                    return json.load(f).get("id")
+            gp = os.path.join(BASE_DIR, folder)
+            return {
+                "owner": os.path.join(gp, "owner.json"),
+                "ranks": os.path.join(gp, "member_rank.json"),
+                "perms": os.path.join(gp, "permissions.json")
+            }
     return None
 
+# --- دالة فحص الهرمية لـ "الطرد" ---
+async def check_kick_hierarchy(event, paths, target_id):
+    sender_id = event.sender_id
+    
+    # رتبة المنفذ
+    s_rank = "عضو"
+    if os.path.exists(paths["owner"]):
+        with open(paths["owner"], "r") as f:
+            if json.load(f).get("id") == sender_id: s_rank = "owner"
+    if s_rank != "owner" and os.path.exists(paths["ranks"]):
+        with open(paths["ranks"], "r") as f:
+            ranks = json.load(f)
+            s_rank = ranks.get(str(sender_id), {}).get("rank", "عضو")
+
+    # فحص صلاحية "طرد" من ملف الـ JSON
+    if s_rank != "owner":
+        if os.path.exists(paths["perms"]):
+            with open(paths["perms"], "r") as f:
+                perms = json.load(f)
+                if not perms.get(s_rank, {}).get("طرد", False):
+                    await event.edit(f"⚠️ **رتبتك ({s_rank}) لا تملك صلاحية الطرد!**")
+                    return False
+        else: return False
+
+    # رتبة الهدف
+    t_rank = "عضو"
+    if os.path.exists(paths["owner"]):
+        with open(paths["owner"], "r") as f:
+            if json.load(f).get("id") == target_id: t_rank = "owner"
+    if t_rank != "owner" and os.path.exists(paths["ranks"]):
+        with open(paths["ranks"], "r") as f:
+            ranks = json.load(f)
+            t_rank = ranks.get(str(target_id), {}).get("rank", "عضو")
+
+    # تطبيق قانون الهرمية
+    if RANK_POWER[s_rank] <= RANK_POWER[t_rank] and s_rank != "owner":
+        msg = await event.edit(f"⚠️ **لا يمكنك طرد رتبة اعلى منك او مساوية لك ({t_rank})!**")
+        await asyncio.sleep(10)
+        await msg.delete()
+        return False
+    return True
+
 # ==========================================
-# أمر موقت طرد (تحديث كل 10 ثواني + طرد)
+# أمر موقت طرد الهرمي (.موقت طرد)
 # ==========================================
 @client.on(events.NewMessage(outgoing=True, pattern=r"^\.موقت طرد\s+(.*)$"))
 async def timed_kick(event):
     if not event.is_group: return
-    owner_id = get_owner_only(event.chat_id)
-    if not owner_id or event.sender_id != owner_id: return
+    
+    paths = get_all_paths(event.chat_id)
+    if not paths: return await event.edit("⚠️ المجموعة غير مفعلة!")
 
     args = event.pattern_match.group(1).split()
-    if not args:
-        return await event.edit("⚠️ **مثال: .موقت طرد 1m**")
+    if not args: return await event.edit("⚠️ **مثال: .موقت طرد 1m**")
 
     seconds = parse_time(args[0])
-    if not seconds or seconds < 60:
-        return await event.edit("⚠️ **أقل مدة للطرد هي دقيقة واحدة (1m)!**")
+    if not seconds: return await event.edit("⚠️ **وقت غير صالح! استخدم (s, m, h, d)**")
 
+    # تحديد الهدف
     user_id = None
     if event.is_reply:
         reply = await event.get_reply_message()
@@ -55,15 +104,16 @@ async def timed_kick(event):
     else:
         return await event.edit("⚠️ **رد على الشخص أو أرسل يوزره!**")
 
-    if user_id == event.sender_id: return await event.edit("⚠️ **لا يمكن طرد الملك!**")
+    # فحص الهرمية قبل بدء المؤقت
+    if not await check_kick_hierarchy(event, paths, user_id):
+        return
 
     try:
         target = await client.get_entity(user_id)
         name = target.first_name or "المستخدم"
         
-        # 1. حلقة العد التنازلي (تحديث ثابت كل 10 ثواني)
+        # حلقة العد التنازلي
         while seconds > 0:
-            # التحديث ثابت كل 10 ثواني مثل ما ردت
             step = 10 
             if step > seconds: step = seconds
             
@@ -73,25 +123,24 @@ async def timed_kick(event):
             
             await event.edit(
                 "★────────☭────────★\n"
-                "   ☭ • 𝐼𝑅𝐴𝑄𝑇𝐻𝑂𝑂𝑁 • ☭\n"
+                "   ☭ • 𝑰𝑹𝑨𝑸𝑻𝑯𝑶𝑶𝑵 𝑲𝑰𝑪𝑲𝑬𝑹 • ☭\n"
                 "★────────☭────────★\n\n"
                 f"• 𝑵𝒂𝒎𝒆 ⌯ {name}\n"
-                f"• 𝑺𝒕𝒂𝒕𝒖𝒔 ⌯ **قرار استبعاد مؤجل** ⏳\n"
+                f"• 𝑺𝒕𝒂𝒕𝒖𝒔 ⌯ **قرار استبعاد مؤجل (هرمي)** ⏳\n"
                 f"• 𝑻𝒊𝒎𝒆 𝑳𝒆𝒇𝒕 ⌯ `{t_left}`\n\n"
-                "• 𝑫𝑬𝑽 𝑩𝒚 ⌯〔[𝑵](https://t.me/NETH_RON)〕⌯"
+                "• 𝑫𝑬𝑽 𝑩𝒚 ⌯〔 @NETH_RON 〕⌯"
             )
             await asyncio.sleep(step)
             seconds -= step
 
-        # 2. حركات الدوامة قبل الطرد النهائي
+        # حركات الدوامة قبل الطرد
         for f in VORTEX:
-            await event.edit(f"⌯ {f} 〔 جاري تنفيذ أمر الطرد لـ {name} 〕 {f} ⌯")
+            await event.edit(f"⌯ {f} 〔 جاري التنفيذ النهائي 〕 {f} ⌯")
             await asyncio.sleep(0.1)
 
-        # 3. تنفيذ الطرد (Kick)
+        # تنفيذ الطرد
         await client.kick_participant(event.chat_id, user_id)
-        
-        await event.edit(f"• ⌯ **انتهى الوقت.. تم طرد {name} من المملكة بنجاح!** ✅")
+        await event.edit(f"• ⌯ **انتهى الوقت.. تم طرد {name} بنجاح!** ✅")
 
     except Exception as e:
-        await event.edit(f"⚠️ **حدث خطأ:** `{str(e)}`")
+        await event.edit(f"⚠️ **فشل الطرد:** `{str(e)}`")
