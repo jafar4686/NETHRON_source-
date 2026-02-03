@@ -5,17 +5,12 @@ client = getattr(__main__, 'client', None)
 BASE_DIR = "group"
 VORTEX = ["◜", "◝", "◞", "◟"]
 
-# 1. موازين القوة (الهرمية)
+# 1. موازين القوة (الهرمية الأساسية)
 RANK_POWER = {
-    "عضو": 0,
-    "مميز": 1,
-    "ادمن": 2,
-    "مدير": 3,
-    "مطور": 4,
-    "owner": 5  # صاحب السورس (أنت)
+    "عضو": 0, "مميز": 1, "ادمن": 2, "مدير": 3, "مطور": 4, "owner": 5
 }
 
-# --- دالة جلب المسارات ---
+# --- دالة جلب المسارات الموحدة ---
 def get_group_paths(chat_id):
     if not os.path.exists(BASE_DIR): os.makedirs(BASE_DIR)
     for folder in os.listdir(BASE_DIR):
@@ -29,11 +24,11 @@ def get_group_paths(chat_id):
             }
     return None
 
-# --- دالة فحص الهرمية والصلاحية للحظر ---
+# --- العقل المدبر: فحص الهرمية والصلاحية للحظر ---
 async def check_ban_logic(event, paths, target_id):
     sender_id = event.sender_id
     
-    # جلب رتبة المنفذ
+    # تحديد رتبة المنفذ
     s_rank = "عضو"
     if os.path.exists(paths["owner"]):
         with open(paths["owner"], "r") as f:
@@ -53,7 +48,7 @@ async def check_ban_logic(event, paths, target_id):
                     return False
         else: return False
 
-    # 2. فحص الهرمية (مقارنة القوة)
+    # 2. فحص الهرمية (الهدف)
     t_rank = "عضو"
     if os.path.exists(paths["owner"]):
         with open(paths["owner"], "r") as f:
@@ -63,8 +58,9 @@ async def check_ban_logic(event, paths, target_id):
             ranks = json.load(f)
             t_rank = ranks.get(str(target_id), {}).get("rank", "عضو")
 
+    # تطبيق قانون المملكة: "الصغير لا يطرد الكبير"
     if RANK_POWER[s_rank] <= RANK_POWER[t_rank] and s_rank != "owner":
-        msg = await event.edit(f"⚠️ **لا يمكنك حظر رتبة اعلى منك او مساوية لك ({t_rank})!**")
+        msg = await event.edit(f"⚠️ **لا يمكنك حظر رتبة أعلى منك أو مساوية لك ({t_rank})!**")
         await asyncio.sleep(10)
         await msg.delete()
         return False
@@ -77,7 +73,7 @@ async def check_ban_logic(event, paths, target_id):
 @client.on(events.NewMessage(outgoing=True, pattern=r"^\.حظر$"))
 async def ban_user(event):
     if not event.is_group or not event.is_reply:
-        return await event.edit("⚠️ **استخدم الأمر بالرد على الشخص!**")
+        return await event.edit("⚠️ **يرجى الرد على الشخص لطرده ونفيه!**")
     
     paths = get_group_paths(event.chat_id)
     if not paths: return
@@ -85,7 +81,6 @@ async def ban_user(event):
     reply_msg = await event.get_reply_message()
     target_id = reply_msg.sender_id
 
-    # تشغيل منطق الهرمية
     if not await check_ban_logic(event, paths, target_id):
         return
 
@@ -94,42 +89,42 @@ async def ban_user(event):
         name = user.first_name or "المستخدم"
 
         for f in VORTEX:
-            await event.edit(f"⌯ {f} 〔 جاري الحظر حسب الهرمية 〕 {f} ⌯")
+            await event.edit(f"⌯ {f} 〔 جاري التنفيذ ونفي الرتبة 〕 {f} ⌯")
             await asyncio.sleep(0.1)
 
-        # الحظر الرسمي من تليجرام
+        # الحظر الرسمي
         await client(functions.channels.EditBannedRequest(
             event.chat_id, target_id, 
             types.ChatBannedRights(until_date=None, view_messages=True)
         ))
         
-        # التدوين في سجل المحظورين (الرادار)
+        # التدوين في السجل (الرادار) لضمان عدم العودة
         ban_list = []
         if os.path.exists(paths["ban_file"]):
             with open(paths["ban_file"], "r", encoding="utf-8") as f:
                 ban_list = json.load(f)
         
-        if target_id not in ban_list:
-            ban_list.append(target_id)
+        if str(target_id) not in [str(i) for i in ban_list]:
+            ban_list.append(str(target_id))
             with open(paths["ban_file"], "w", encoding="utf-8") as f:
                 json.dump(ban_list, f)
 
-        final_text = (
+        res = (
             "★────────☭────────★\n"
-            "   ☭ • 𝐼𝑅𝐴𝑄𝑇𝐻𝑂𝑂𝑁 𝑩𝑨𝑵 • ☭\n"
+            "   ☭ • 𝑰𝑹𝑨𝑸𝑻𝑯𝑶𝑶𝑵 𝑩𝑨𝑵 • ☭\n"
             "★────────☭────────★\n\n"
             f"• 𝑵𝒂𝒎𝒆 ⌯ {name}\n"
             f"• 𝑰𝒅 ⌯ `{target_id}`\n"
-            "• 𝑺𝒕𝒂𝒕𝒖𝒔 ⌯ **تم نفيه من المملكة** 🚫\n\n"
-            "• 𝑫𝑬𝑽 𝑩𝒚 ⌯〔[𝑵](https://t.me/NETH_RON)〕⌯"
+            "• 𝑺𝒕𝒂𝒕𝒖𝒔 ⌯ **تم نفيه وحرق سجلاته** 🚫\n\n"
+            "• 𝑫𝑬𝑽 𝑩𝒚 ⌯〔 @NETH_RON 〕⌯"
         )
-        await event.edit(final_text)
+        await event.edit(res)
 
     except Exception as e:
-        await event.edit(f"⚠️ **فشل الحظر:** `{str(e)}`")
+        await event.edit(f"⚠️ **حدث خطأ:** `{str(e)}`")
 
 # ==========================================
-# 2. رادار المراقبة (منع المحظورين من العودة)
+# 2. رادار المراقبة (منع المحظورين)
 # ==========================================
 @client.on(events.ChatAction())
 async def auto_kick_banned(event):
@@ -137,9 +132,11 @@ async def auto_kick_banned(event):
         paths = get_group_paths(event.chat_id)
         if paths and os.path.exists(paths["ban_file"]):
             with open(paths["ban_file"], "r", encoding="utf-8") as f:
-                ban_list = json.load(f)
+                ban_list = [str(i) for i in json.load(f)]
             
-            if event.user_id in ban_list:
+            if str(event.user_id) in ban_list:
                 try:
                     await client.kick_participant(event.chat_id, event.user_id)
+                    # إرسال تنبيه بسيط للمجموعة (اختياري)
+                    await client.send_message(event.chat_id, "⚠️ **الرادار كشف شخص محظور يحاول الدخول وتم طرده فوراً!**")
                 except: pass
