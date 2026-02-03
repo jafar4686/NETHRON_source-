@@ -6,12 +6,12 @@ client = getattr(__main__, 'client', None)
 BASE_DIR = "group"
 VORTEX = ["◜", "◝", "◞", "◟"]
 
-# 1. موازين القوة (الهرمية)
+# 1. موازين القوة (الهرمية الأساسية للسورس)
 RANK_POWER = {
     "عضو": 0, "مميز": 1, "ادمن": 2, "مدير": 3, "مطور": 4, "owner": 5
 }
 
-# دالة تحويل الوقت
+# دالة تحويل الوقت (s, m, h, d)
 def parse_time(time_str):
     units = {"s": 1, "m": 60, "h": 3600, "d": 86400}
     match = re.match(r"(\d+)([smhd])", time_str.lower())
@@ -33,11 +33,11 @@ def get_all_paths(chat_id):
             }
     return None
 
-# --- دالة فحص الهرمية لـ "الطرد" ---
+# --- العقل المدبر: فحص الهرمية لـ "الطرد" ---
 async def check_kick_hierarchy(event, paths, target_id):
     sender_id = event.sender_id
     
-    # رتبة المنفذ
+    # تحديد رتبة المنفذ
     s_rank = "عضو"
     if os.path.exists(paths["owner"]):
         with open(paths["owner"], "r") as f:
@@ -47,7 +47,7 @@ async def check_kick_hierarchy(event, paths, target_id):
             ranks = json.load(f)
             s_rank = ranks.get(str(sender_id), {}).get("rank", "عضو")
 
-    # فحص صلاحية "طرد" من ملف الـ JSON
+    # 1. فحص الصلاحية من لوحة التحكم (permissions.json)
     if s_rank != "owner":
         if os.path.exists(paths["perms"]):
             with open(paths["perms"], "r") as f:
@@ -57,7 +57,7 @@ async def check_kick_hierarchy(event, paths, target_id):
                     return False
         else: return False
 
-    # رتبة الهدف
+    # 2. فحص رتبة الهدف (المطرود)
     t_rank = "عضو"
     if os.path.exists(paths["owner"]):
         with open(paths["owner"], "r") as f:
@@ -67,9 +67,9 @@ async def check_kick_hierarchy(event, paths, target_id):
             ranks = json.load(f)
             t_rank = ranks.get(str(target_id), {}).get("rank", "عضو")
 
-    # تطبيق قانون الهرمية
+    # تطبيق قانون الهرمية (منع تجاوز الرتب)
     if RANK_POWER[s_rank] <= RANK_POWER[t_rank] and s_rank != "owner":
-        msg = await event.edit(f"⚠️ **لا يمكنك طرد رتبة اعلى منك او مساوية لك ({t_rank})!**")
+        msg = await event.edit(f"⚠️ **لا يمكنك طرد رتبة أعلى منك أو مساوية لك ({t_rank})!**")
         await asyncio.sleep(10)
         await msg.delete()
         return False
@@ -83,7 +83,7 @@ async def timed_kick(event):
     if not event.is_group: return
     
     paths = get_all_paths(event.chat_id)
-    if not paths: return await event.edit("⚠️ المجموعة غير مفعلة!")
+    if not paths: return await event.edit("⚠️ **المجموعة غير مفعلة في السورس!**")
 
     args = event.pattern_match.group(1).split()
     if not args: return await event.edit("⚠️ **مثال: .موقت طرد 1m**")
@@ -91,7 +91,7 @@ async def timed_kick(event):
     seconds = parse_time(args[0])
     if not seconds: return await event.edit("⚠️ **وقت غير صالح! استخدم (s, m, h, d)**")
 
-    # تحديد الهدف
+    # تحديد الهدف (رد أو يوزر)
     user_id = None
     if event.is_reply:
         reply = await event.get_reply_message()
@@ -104,7 +104,7 @@ async def timed_kick(event):
     else:
         return await event.edit("⚠️ **رد على الشخص أو أرسل يوزره!**")
 
-    # فحص الهرمية قبل بدء المؤقت
+    # فحص الهرمية قبل بدء العد التنازلي
     if not await check_kick_hierarchy(event, paths, user_id):
         return
 
@@ -114,6 +114,7 @@ async def timed_kick(event):
         
         # حلقة العد التنازلي
         while seconds > 0:
+            # تحديث الرسالة كل 10 ثواني (أو أقل إذا قارب الوقت على الانتهاء)
             step = 10 
             if step > seconds: step = seconds
             
@@ -133,14 +134,14 @@ async def timed_kick(event):
             await asyncio.sleep(step)
             seconds -= step
 
-        # حركات الدوامة قبل الطرد
+        # حركات الدوامة (Vortex) لإعطاء هيبة للتنفيذ
         for f in VORTEX:
-            await event.edit(f"⌯ {f} 〔 جاري التنفيذ النهائي 〕 {f} ⌯")
+            await event.edit(f"⌯ {f} 〔 جاري التنفيذ النهائي للاستبعاد 〕 {f} ⌯")
             await asyncio.sleep(0.1)
 
-        # تنفيذ الطرد
+        # تنفيذ الطرد النهائي من تليجرام
         await client.kick_participant(event.chat_id, user_id)
-        await event.edit(f"• ⌯ **انتهى الوقت.. تم طرد {name} بنجاح!** ✅")
+        await event.edit(f"• ⌯ **انتهى الوقت الملكي.. تم طرد {name} بنجاح!** ✅")
 
     except Exception as e:
         await event.edit(f"⚠️ **فشل الطرد:** `{str(e)}`")
