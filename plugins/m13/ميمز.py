@@ -4,62 +4,53 @@ from telethon import events
 client = getattr(__main__, 'client', None)
 DB_FILE = "memes_db.json"
 
-# دالة لجلب البيانات من ملف الـ JSON
+# دالة جلب البيانات مع ضمان اللغة العربية
 def get_memes():
     if not os.path.exists(DB_FILE):
-        # إذا الملف مو موجود نسوي واحد فارغ
         with open(DB_FILE, "w", encoding="utf-8") as f:
-            json.dump({}, f)
+            json.dump({}, f, ensure_ascii=False, indent=4)
         return {}
-    with open(DB_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
+    try:
+        with open(DB_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except:
+        return {}
 
 # ==========================================
-# 1. أمر البحث والاستدعاء (.م [اسم البصمة])
+# أمر الاستدعاء المصلح (.م [الاسم])
 # ==========================================
 @client.on(events.NewMessage(outgoing=True, pattern=r"^\.م\s+(.*)$"))
 async def play_meme(event):
+    # تنظيف النص المكتوب من المسافات الزايدة
     search_query = event.pattern_match.group(1).strip()
     memes = get_memes()
     
-    # البحث عن أقرب اسم (البحث الذكي)
+    if not memes:
+        return await event.edit("⚠️ **قاعدة البيانات فارغة! ضيف أصوات بالملف أولاً.**")
+
     found_key = None
+    # بحث دقيق (Exact Match) أو بحث جزئي
     for name in memes.keys():
-        if search_query in name: # إذا الكلمة موجودة ضمن الاسم
+        if search_query == name or search_query in name:
             found_key = name
             break
     
     if found_key:
-        # حذف رسالة الأمر لإرسال البصمة بدالها
-        await event.delete()
-        # إرسال البصمة مباشرة من الرابط
-        await client.send_file(
-            event.chat_id, 
-            memes[found_key], 
-            voice_note=True, # لإرسالها كبصمة
-            reply_to=event.reply_to_msg_id
-        )
+        try:
+            # محاولة جلب الرابط وإرساله
+            link = memes[found_key]
+            await event.edit("🚀 **جاري سحب البصمة...**")
+            
+            await client.send_file(
+                event.chat_id, 
+                link, 
+                voice_note=True, # إرسال كبصمة
+                reply_to=event.reply_to_msg_id
+            )
+            await event.delete() # حذف كلمة "جاري سحب البصمة" بعد النجاح
+        except Exception as e:
+            await event.edit(f"❌ **فشل سحب البصمة من الرابط!**\nتأكد أن القناة عامة أو البوت موجود فيها.\n`{str(e)}`")
     else:
-        await event.edit(f"⚠️ **لم أجد بصمة باسم ({search_query}) في القائمة!**")
-
-# ==========================================
-# 2. عرض كل قائمة الميمز (.ميمز)
-# ==========================================
-@client.on(events.NewMessage(outgoing=True, pattern=r"^\.ميمز$"))
-async def list_memes(event):
-    memes = get_memes()
-    if not memes:
-        return await event.edit("⚠️ **قائمة الميمز فارغة حالياً!**")
-    
-    menu = (
-        "★────────☭────────★\n"
-        "   ☭ • 𝑰𝑹𝑨𝑸𝑻𝑯𝑶𝑶𝑵 𝑴𝑬𝑴𝑬𝑺 • ☭\n"
-        "★────────☭────────★\n\n"
-        "• للاستدعاء أرسل: `.م + اسم البصمة`\n\n"
-    )
-    
-    for name in memes.keys():
-        menu += f"• `{name}`\n"
-        
-    menu += "\n• 𝑫𝑬𝑽 𝑩𝒚 ⌯〔 @NETH_RON 〕⌯"
-    await event.edit(menu)
+        # إذا ما لقى الاسم، يعرض المتاح حتى تراجع إملاءك
+        all_names = "، ".join(memes.keys())
+        await event.edit(f"🔍 **لم أجد: ({search_query})**\n\n✅ **المتوفر حالياً:**\n`{all_names}`")
