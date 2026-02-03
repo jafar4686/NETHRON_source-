@@ -1,86 +1,107 @@
-import __main__, os, json
+import __main__, os, json, asyncio
 from telethon import events, functions, types
 
 # استخراج الكلاينت
 client = getattr(__main__, 'client', None)
 BASE_DIR = "group"
 
-# دالة جلب مسار المجلد والبيانات
-def get_group_data(chat_id):
-    if not os.path.exists(BASE_DIR): return None, None
+# 1. موازين القوة (الهرمية)
+RANK_POWER = {
+    "عضو": 0, "مميز": 1, "ادمن": 2, "مدير": 3, "مطور": 4, "owner": 5
+}
+
+# --- دالة جلب المسارات الموحدة ---
+def get_group_paths(chat_id):
+    if not os.path.exists(BASE_DIR): return None
     for folder in os.listdir(BASE_DIR):
         if folder.endswith(str(chat_id)):
-            folder_path = os.path.join(BASE_DIR, folder)
-            owner_path = os.path.join(folder_path, "owner.json")
-            stats_path = os.path.join(folder_path, "stats.json")
-            
-            owner_id = None
-            if os.path.exists(owner_path):
-                with open(owner_path, "r", encoding="utf-8") as f:
-                    owner_id = json.load(f).get("id")
-            
-            return owner_id, stats_path
-    return None, None
+            gp = os.path.join(BASE_DIR, folder)
+            return {
+                "owner": os.path.join(gp, "owner.json"),
+                "ranks": os.path.join(gp, "member_rank.json"),
+                "stats": os.path.join(gp, "stats.json"),
+                "perms": os.path.join(gp, "permissions.json")
+            }
+    return None
 
+# ==========================================
+# أمر الكشف الهرمي (.كشف بالرد)
+# ==========================================
 @client.on(events.NewMessage(outgoing=True, pattern=r"^\.كشف$"))
 async def detect_user(event):
     if not event.is_group: return
     
-    # 1. التحقق من المالك وجلب مسار ملف الإحصائيات
-    owner_id, stats_file = get_group_data(event.chat_id)
+    paths = get_group_paths(event.chat_id)
+    if not paths: return
+
+    # 1. فحص رتبة المنفذ وصلاحيته للكشف
+    sender_id = event.sender_id
+    s_rank = "عضو"
+    if os.path.exists(paths["owner"]):
+        with open(paths["owner"], "r") as f:
+            if json.load(f).get("id") == sender_id: s_rank = "owner"
     
-    if not owner_id or event.sender_id != owner_id:
-        return 
+    if s_rank != "owner" and os.path.exists(paths["ranks"]):
+        with open(paths["ranks"], "r") as f:
+            ranks_data = json.load(f)
+            s_rank = ranks_data.get(str(sender_id), {}).get("rank", "عضو")
+
+    # فحص الصلاحية من permissions.json
+    if s_rank != "owner":
+        if os.path.exists(paths["perms"]):
+            with open(paths["perms"], "r") as f:
+                perms = json.load(f)
+                if not perms.get(s_rank, {}).get("كشف", False):
+                    warn = await event.edit(f"⚠️ **رتبتك ({s_rank}) لا تملك صلاحية الكشف!**")
+                    await asyncio.sleep(7)
+                    return await warn.delete()
+        else: return
 
     if not event.is_reply:
         return await event.edit("⚠️ **يرجى الرد على الشخص لكشف حسابه!**")
 
     reply_msg = await event.get_reply_message()
-    user_id = reply_msg.sender_id
+    target_id = reply_msg.sender_id
     
     await event.edit("⌯ 〔 جاري استخراج البيانات من سجلات المملكة... 〕 ⌯")
 
     try:
         # جلب معلومات الحساب
-        user = await client.get_entity(user_id)
+        user = await client.get_entity(target_id)
         full_user = await client(functions.users.GetFullUserRequest(user.id))
         
-        # جلب الرتبة الحالية
-        p = await client.get_permissions(event.chat_id, user.id)
-        rank = "المنشئ" if p.is_creator else "مشرف" if p.is_admin else "عضو"
+        # 2. تحديد رتبة الهدف في السورس
+        t_rank = "عضو"
+        if os.path.exists(paths["owner"]):
+            with open(paths["owner"], "r") as f:
+                if json.load(f).get("id") == target_id: t_rank = "المالك 👑"
+        
+        if t_rank == "عضو" and os.path.exists(paths["ranks"]):
+            with open(paths["ranks"], "r") as f:
+                r_data = json.load(f)
+                t_rank = r_data.get(str(target_id), {}).get("rank", "عضو")
 
-        # تاريخ الانضمام
-        join_date = user.date.strftime("%Y/%m/%d") if hasattr(user, 'date') and user.date else "غير معروف"
-
-        # --- السحب من stats.json لضمان دقة 100% ---
+        # 3. جلب الإحصائيات من stats.json
         count_msg = 0
-        if stats_file and os.path.exists(stats_file):
-            with open(stats_file, "r", encoding="utf-8") as f:
-                try:
-                    stats_data = json.load(f)
-                    # البحث عن آيدي المستخدم داخل الملف
-                    user_data = stats_data.get(str(user_id))
-                    if user_data:
-                        count_msg = user_data.get("count", 0)
-                except:
-                    count_msg = 0
+        if os.path.exists(paths["stats"]):
+            with open(paths["stats"], "r", encoding="utf-8") as f:
+                stats_data = json.load(f)
+                count_msg = stats_data.get(str(target_id), {}).get("count", 0)
 
-        # التنسيق النهائي بالكليشة المطلوبة
-        name = user.first_name if user.first_name else "بدون اسم"
+        # تنسيق البيانات
+        name = user.first_name or "بدون اسم"
         username = f"@{user.username}" if user.username else "لا يوجد"
-        bio = full_user.full_user.about if full_user.full_user.about else "لا يوجد بايو"
+        bio = full_user.full_user.about or "لا يوجد بايو"
         
         final_text = (
             "★────────☭────────★\n"
-            "   ☭ • 𝐼𝑅𝐴𝑄𝑇𝐻𝑂𝑂𝑁 • ☭\n"
+            "   ☭ • 𝑰𝑹𝑨𝑸𝑻𝑯𝑶𝑶𝑵 • ☭\n"
             "★────────☭────────★\n\n"
-            "• ⌯\n"
             f"• 𝑵𝒂𝒎𝒆 ⌯ {name}\n"
             f"• 𝑼𝒔𝒆𝒓 ⌯ {username}\n"
             f"• 𝑩𝒊𝒐 ⌯ {bio}\n"
-            f"• 𝑴𝒂𝒔𝒔𝒆𝒈𝒆 ⌯ {count_msg}\n"
-            f"• 𝑹𝒂𝒏𝒌 ⌯ {rank}\n"
-            f"• 𝑱𝒐𝒊𝒏 𝑫𝒂𝒕𝒆 ⌯ {join_date}\n"
+            f"• 𝑴𝒆𝒔𝒔𝒂𝒈𝒆𝒔 ⌯ {count_msg}\n"
+            f"• 𝑹𝒂𝒏𝒌 ⌯ {t_rank}\n"
             f"• 𝑰𝒅 ⌯ `{user.id}`\n\n"
             "• 𝑫𝑬𝑽 𝑩𝒚 ⌯〔[𝑵](https://t.me/NETH_RON)〕⌯"
         )
@@ -88,4 +109,4 @@ async def detect_user(event):
         await event.edit(final_text, link_preview=False)
 
     except Exception as e:
-        await event.edit(f"⚠️ **فشل الكشف:**\n`{str(e)}`")
+        await event.edit(f"⚠️ **فشل الكشف:** `{str(e)}`")
