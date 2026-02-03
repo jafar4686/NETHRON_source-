@@ -20,7 +20,7 @@ def parse_time(time_str):
         return int(val) * units[unit]
     return None
 
-# دالة جلب المسارات
+# دالة جلب المسارات الموحدة
 def get_paths(chat_id):
     for folder in os.listdir(BASE_DIR):
         if folder.endswith(str(chat_id)):
@@ -34,8 +34,8 @@ def get_paths(chat_id):
             }
     return None
 
-# --- دالة فحص الهرمية والصلاحية (نفس سيستم الحظر والكتم) ---
-async def check_hierarchy_logic(event, paths, target_id, action):
+# --- دالة فحص الهرمية والصلاحية للمؤقت ---
+async def check_hierarchy_logic(event, paths, target_id):
     sender_id = event.sender_id
     
     # رتبة المنفذ
@@ -48,13 +48,13 @@ async def check_hierarchy_logic(event, paths, target_id, action):
             ranks = json.load(f)
             s_rank = ranks.get(str(sender_id), {}).get("rank", "عضو")
 
-    # فحص الصلاحية (مسموح للمدير والمطور أو المالك)
+    # فحص الصلاحية من ملف permissions (المنفذ لازم عنده صلاحية حظر)
     if s_rank != "owner":
         if os.path.exists(paths["perms"]):
             with open(paths["perms"], "r") as f:
                 perms = json.load(f)
                 if not perms.get(s_rank, {}).get("حظر", False):
-                    await event.edit(f"⚠️ **رتبتك ({s_rank}) لا تملك صلاحية الحظر!**")
+                    await event.edit(f"⚠️ **رتبتك ({s_rank}) لا تملك صلاحية استخدام المؤقتات!**")
                     return False
         else: return False
 
@@ -68,6 +68,7 @@ async def check_hierarchy_logic(event, paths, target_id, action):
             ranks = json.load(f)
             t_rank = ranks.get(str(target_id), {}).get("rank", "عضو")
 
+    # تطبيق قانون "الصغير ما يتجاوز عالجبير"
     if RANK_POWER[s_rank] <= RANK_POWER[t_rank] and s_rank != "owner":
         msg = await event.edit(f"⚠️ **لا يمكنك نفي رتبة اعلى منك او مساوية لك ({t_rank})!**")
         await asyncio.sleep(10)
@@ -83,15 +84,15 @@ async def timed_execution(event):
     if not event.is_group: return
     
     paths = get_paths(event.chat_id)
-    if not paths: return await event.edit("⚠️ المجموعة غير مفعلة!")
+    if not paths: return await event.edit("⚠️ **المجموعة غير مفعلة في السورس!**")
 
     args = event.pattern_match.group(1).split()
     if not args: return await event.edit("⚠️ **مثال: .موقت حظر 1m**")
 
     seconds = parse_time(args[0])
-    if not seconds: return await event.edit("⚠️ **وقت غير صالح! استخدم (s, m, h, d)**")
+    if not seconds: return await event.edit("⚠️ **وقت غير صالح! استخدم s, m, h, d**")
 
-    # تحديد الهدف
+    # تحديد الهدف (رد أو يوزر)
     user_id = None
     if event.is_reply:
         reply = await event.get_reply_message()
@@ -104,8 +105,8 @@ async def timed_execution(event):
     else:
         return await event.edit("⚠️ **رد على الشخص أو أرسل يوزره!**")
 
-    # فحص الهرمية قبل بدء العد
-    if not await check_hierarchy_logic(event, paths, user_id, "حظر"):
+    # فحص الهرمية قبل بدء العد التنازلي
+    if not await check_hierarchy_logic(event, paths, user_id):
         return
 
     try:
@@ -123,7 +124,7 @@ async def timed_execution(event):
             
             await event.edit(
                 "★────────☭────────★\n"
-                "   ☭ • 𝐼𝑅𝐴𝑄𝑇𝐻𝑂𝑂𝑁 𝑻𝑰𝑴𝑬𝑹 • ☭\n"
+                "   ☭ • 𝑰𝑹𝑨𝑸𝑻𝑯𝑶𝑶𝑵 𝑻𝑰𝑴𝑬𝑹 • ☭\n"
                 "★────────☭────────★\n\n"
                 f"• 𝑵𝒂𝒎𝒆 ⌯ {name}\n"
                 f"• 𝑺𝒕𝒂𝒕𝒖𝒔 ⌯ **قرار نفي وشيك (هرمي)** ⏳\n"
@@ -133,17 +134,18 @@ async def timed_execution(event):
             await asyncio.sleep(step)
             seconds -= step
 
-        # التنفيذ النهائي
+        # الدوامة قبل الحظر النهائي
         for f in VORTEX:
-            await event.edit(f"⌯ {f} 〔 جاري سحق الرتبة والنفي 〕 {f} ⌯")
+            await event.edit(f"⌯ {f} 〔 جاري تنفيذ حكم النفي النهائي 〕 {f} ⌯")
             await asyncio.sleep(0.1)
 
+        # الحظر من تليجرام
         await client(functions.channels.EditBannedRequest(
             event.chat_id, user_id, 
             types.ChatBannedRights(until_date=None, view_messages=True)
         ))
         
-        # التدوين في سجل المحظورين
+        # التدوين في سجل الرادار (ban.json)
         ban_list = []
         if os.path.exists(paths["ban"]):
             with open(paths["ban"], "r", encoding="utf-8") as f: ban_list = json.load(f)
@@ -154,4 +156,4 @@ async def timed_execution(event):
         await event.edit(f"• ⌯ **انتهى الوقت.. تم نفي {name} رسمياً!** 🚫")
 
     except Exception as e:
-        await event.edit(f"⚠️ **خطأ في التنفيذ:** `{str(e)}`")
+        await event.edit(f"⚠️ **خطأ:** `{str(e)}`")
