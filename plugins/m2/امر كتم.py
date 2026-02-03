@@ -23,11 +23,12 @@ def get_group_paths(chat_id):
 # --- دالة فحص الصلاحية ---
 async def check_permission(event, paths, action):
     uid = event.sender_id
-    # فحص المالك أولاً
-    with open(paths["owner"], "r", encoding="utf-8") as f:
-        if json.load(f).get("id") == uid: return True
+    # 1. المالك (حق مطلق)
+    if os.path.exists(paths["owner"]):
+        with open(paths["owner"], "r", encoding="utf-8") as f:
+            if json.load(f).get("id") == uid: return True
     
-    # فحص الرتبة والصلاحية
+    # 2. فحص الرتبة والصلاحية من الملفات
     if os.path.exists(paths["ranks"]):
         with open(paths["ranks"], "r", encoding="utf-8") as f:
             ranks = json.load(f)
@@ -49,13 +50,14 @@ async def mute_user(event):
     paths = get_group_paths(event.chat_id)
     if not paths: return
     
+    # فحص الصلاحية
     if not await check_permission(event, paths, "كتم"):
         return await event.edit("⚠️ **عذراً، رتبتك لا تملك صلاحية الكتم!**")
 
     reply = await event.get_reply_message()
     u_id = str(reply.sender_id)
     user = await reply.get_sender()
-    u_name = user.first_name or "Unknown"
+    u_name = user.first_name or "المستخدم"
 
     mute_data = []
     if os.path.exists(paths["mute"]):
@@ -63,19 +65,29 @@ async def mute_user(event):
             mute_data = json.load(f)
 
     if u_id in mute_data:
-        return await event.edit("⚠️ **الشخص مكتوم بالفعل!**")
+        return await event.edit("⚠️ **هذا الشخص ملجوم (مكتوم) أصلاً!**")
 
-    # تأثير الدوامة (Vortex)
+    # تأثير الدوامة (عراق ثون)
     for f in VORTEX:
-        await event.edit(f"⌯ {f} 〔 جاري كتم الشخص... 〕 {f} ⌯")
+        await event.edit(f"⌯ {f} 〔 جاري تدوين القيد في السجلات 〕 {f} ⌯")
         await asyncio.sleep(0.1)
 
     mute_data.append(u_id)
     with open(paths["mute"], "w", encoding="utf-8") as f:
         json.dump(mute_data, f, indent=4, ensure_ascii=False)
 
-    # الكليشة الإنجليزية الأصلية
-    await event.edit(f"★────────☭────────★\n• 𝑴𝒖𝒕𝒆𝒅 𝑫𝒐𝒏𝒆 ✔\n• 𝑼𝒔𝒆𝒓 ⌯ {u_name}\n• 𝑰𝒅 ⌯ `{u_id}`\n★────────☭────────★")
+    # الكليشة النهائية
+    res = (
+        "★────────☭────────★\n"
+        "   ☭ • 𝑴𝑼𝑻𝑬𝑫 𝑫𝑶𝑵𝑬 • ☭\n"
+        "★────────☭────────★\n\n"
+        f"• 𝑵𝒂𝒎𝒆 ⌯ {u_name}\n"
+        f"• 𝑰𝒅 ⌯ `{u_id}`\n"
+        "• 𝑺𝒕𝒂𝒕𝒖𝒔 ⌯ **تم خرسه عن الكلام** 🤐\n"
+        "━━━━━━━━━━━━━━━━━━━\n"
+        "• 𝑫𝑬𝑽 𝑩𝒚 ⌯〔 @NETH_RON 〕⌯"
+    )
+    await event.edit(res)
 
 # ==========================================
 # 2. أمر فك الكتم (.فك كتم بالرد)
@@ -85,7 +97,8 @@ async def unmute_user(event):
     if not event.is_group or not event.is_reply: return
     
     paths = get_group_paths(event.chat_id)
-    if not paths or not await check_permission(event, paths, "كتم"):
+    # فحص صلاحية "فك كتم"
+    if not paths or not await check_permission(event, paths, "فك كتم"):
         return await event.edit("⚠️ **عذراً، رتبتك لا تملك صلاحية فك الكتم!**")
 
     reply = await event.get_reply_message()
@@ -97,21 +110,30 @@ async def unmute_user(event):
         mute_data = json.load(f)
 
     if u_id not in mute_data:
-        return await event.edit("⚠️ **الشخص غير مكتوم!**")
+        return await event.edit("⚠️ **الشخص غير مكتوم لفك كتمه!**")
 
     for f in VORTEX:
-        await event.edit(f"⌯ {f} 〔 جاري فك الكتم... 〕 {f} ⌯")
+        await event.edit(f"⌯ {f} 〔 جاري إصدار عفو ملكي... 〕 {f} ⌯")
         await asyncio.sleep(0.1)
 
     mute_data.remove(u_id)
     with open(paths["mute"], "w", encoding="utf-8") as f:
         json.dump(mute_data, f, indent=4, ensure_ascii=False)
 
-    # الكليشة القديمة
-    await event.edit("• ⌯ **تم فك الكتم عن الشخص بنجاح ✔**")
+    # كليشة فك الكتم
+    res = (
+        "★────────☭────────★\n"
+        "   ☭ • 𝑼𝑵𝑴𝑼𝑻𝑬 𝑫𝑶𝑵𝑬 • ☭\n"
+        "★────────☭────────★\n\n"
+        f"• 𝑰𝒅 ⌯ `{u_id}`\n"
+        "• 𝑺𝒕𝒂𝒕𝒖𝒔 ⌯ **تم السماح له بالتحدث** ✅\n"
+        "━━━━━━━━━━━━━━━━━━━\n"
+        "• 𝑫𝑬𝑽 𝑩𝒚 ⌯〔 @NETH_RON 〕⌯"
+    )
+    await event.edit(res)
 
 # ==========================================
-# 3. المحرك (حذف الرسائل)
+# 3. المحرك الصامت (حذف رسائل المكتومين)
 # ==========================================
 @client.on(events.NewMessage(incoming=True))
 async def mute_engine(event):
@@ -123,5 +145,7 @@ async def mute_engine(event):
         mute_list = json.load(f)
 
     if str(event.sender_id) in mute_list:
-        try: await event.delete()
-        except: pass
+        try: 
+            await event.delete()
+        except: 
+            pass
