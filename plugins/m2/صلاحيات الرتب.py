@@ -5,75 +5,84 @@ client = getattr(__main__, 'client', None)
 BASE_DIR = "group"
 VORTEX = ["◜", "◝", "◞", "◟"]
 
-# تعريف الرتب حسب القوة (من الأضعف للأقوى)
+# تعريف الهرمية (للاستخدام لاحقاً في ملفات الأوامر)
 RANK_HIERARCHY = {"مميز": 1, "ادمن": 2, "مدير": 3, "مطور": 4, "owner": 5}
 
-# توزيع الصلاحيات الافتراضي حسب طلبك
-DEFAULT_PERMS = {
+# تقييد الصلاحيات حسب طلبك
+RANK_LIMITS = {
     "مميز": ["تفاعلي"],
-    "ادمن": ["كتم", "كشف", "تفاعلي"],
-    "مدير": ["طرد", "كتم", "تفاعلي", "كشف"],
-    "مطور": ["كتم", "حظر", "تفاعلي", "كشف", "طرد"]
+    "ادمن": ["كتم", "كشف", "تفاعلي", "فك كتم"],
+    "مدير": ["طرد", "كتم", "تفاعلي", "كشف", "فك كتم"],
+    "مطور": ["كتم", "فك كتم", "حظر", "الغاء حظر", "تفاعلي", "كشف", "طرد", "تاك"]
 }
 
-PERMISSIONS_LIST = ["كتم", "طرد", "حظر", "تفاعلي", "كشف", "تاك"]
+PERMISSIONS_LIST = ["كتم", "طرد", "حظر", "تفاعلي", "كشف", "تاك", "فك كتم", "الغاء حظر"]
 RANKS = ["مميز", "ادمن", "مدير", "مطور"]
 
+# --- جلب المسارات ---
 def get_paths(chat_id):
     for folder in os.listdir(BASE_DIR):
         if folder.endswith(str(chat_id)):
             gp = os.path.join(BASE_DIR, folder)
-            return os.path.join(gp, "permissions.json"), os.path.join(gp, "member_rank.json"), os.path.join(gp, "owner.json")
-    return None, None, None
+            return os.path.join(gp, "permissions.json"), os.path.join(gp, "member_rank.json")
+    return None, None
 
+# --- تحميل وتحديث الصلاحيات تلقائياً ---
 def load_permissions(path):
     if not os.path.exists(path):
-        data = {rank: {p: (p in DEFAULT_PERMS[rank]) for p in PERMISSIONS_LIST} for rank in RANKS}
+        data = {rank: {p: False for p in PERMISSIONS_LIST} for rank in RANKS}
+    else:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    
+    # التأكد من وجود كل الرتب والصلاحيات (تحديث الملف القديم)
+    updated = False
+    for rank in RANKS:
+        if rank not in data:
+            data[rank] = {p: False for p in PERMISSIONS_LIST}
+            updated = True
+        for p in PERMISSIONS_LIST:
+            if p not in data[rank]:
+                data[rank][p] = False
+                updated = True
+    
+    if updated:
         with open(path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=4, ensure_ascii=False)
-        return data
-    with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-# --- دالة فحص الهرمية (الرتبة ضد الرتبة) ---
-async def check_hierarchy(event, target_id):
-    path_perms, path_ranks, path_owner = get_paths(event.chat_id)
-    if not path_ranks: return True # مسموح إذا ماكو بيانات
-    
-    # 1. جلب رتبة المنفذ
-    sender_rank = "مميز"
-    with open(path_owner, "r") as f: 
-        if json.load(f).get("id") == event.sender_id: sender_rank = "owner"
-    
-    if sender_rank != "owner":
-        with open(path_ranks, "r") as f:
-            ranks = json.load(f)
-            sender_rank = ranks.get(str(event.sender_id), {}).get("rank", "مميز")
-
-    # 2. جلب رتبة الهدف
-    target_rank = "مميز"
-    with open(path_owner, "r") as f:
-        if json.load(f).get("id") == target_id: target_rank = "owner"
-    
-    if target_rank != "owner":
-        with open(path_ranks, "r") as f:
-            ranks = json.load(f)
-            target_rank = ranks.get(str(target_id), {}).get("rank", "مميز")
-
-    # المقارنة
-    if RANK_HIERARCHY[sender_rank] <= RANK_HIERARCHY[target_rank] and sender_rank != "owner":
-        warn = await event.edit(f"⚠️ **عذراً، لا يمكنك تنفيذ هذا الأمر على رتبة {target_rank} (أعلى منك أو مساوية لك)!**")
-        await asyncio.sleep(10)
-        await warn.delete()
-        return False
-    return True
+    return data
 
 # ==========================================
-# 1. عرض الصلاحيات (مع الالتزام بالتوزيع الجديد)
+# 1. أمر عرض الرتب (.صلاحيات)
+# ==========================================
+@client.on(events.NewMessage(outgoing=True, pattern=r"^\.صلاحيات$"))
+async def show_ranks(event):
+    if not event.is_group: return
+    
+    header = (
+        "★────────☭────────★\n"
+        "   ☭ • 𝐼𝑅𝐴𝑄𝑇𝐻𝑂𝑂𝑁 • ☭\n"
+        "★────────☭────────★\n\n"
+        "• ⌯ **قائمة الرتب المتوفرة :**\n\n"
+    )
+    body = ""
+    for rank in RANKS:
+        body += f"• 𝑹𝒂𝒏𝒌 ⌯ `{rank}`\n"
+    
+    footer = (
+        "\n━━━━━━━━━━━━━━━━━━━\n"
+        "• 𝑫𝑬𝑽 𝑩𝒚 ⌯〔 @NETH_RON 〕⌯\n"
+        "💡 للاختيار أرسل: `.صلاحيات + الرتبة`"
+    )
+    await event.edit(header + body + footer)
+
+# ==========================================
+# 2. عرض صلاحيات رتبة (مقيدة حسب الهرمية)
 # ==========================================
 @client.on(events.NewMessage(outgoing=True, pattern=r"^\.صلاحيات (مميز|ادمن|مدير|مطور)$"))
 async def show_rank_perms(event):
-    path_perms, _, _ = get_paths(event.chat_id)
+    path_perms, _ = get_paths(event.chat_id)
+    if not path_perms: return await event.edit("⚠️ المجموعة غير مفعلة.")
+    
     rank_name = event.pattern_match.group(1)
     
     for f in VORTEX:
@@ -84,10 +93,9 @@ async def show_rank_perms(event):
     header = "★────────☭────────★\n" + f"   ☭ • 𝑷𝑬𝑹𝑴𝑺 {rank_name.upper()} • ☭\n" + "★────────☭────────★\n\n"
     body = f"• 𝑹𝒂𝒏𝒌 ⌯ `{rank_name}`\n━━━━━━━━━━━━━━━━━━━\n"
     
-    # فلترة العرض حسب المسموح لكل رتبة في النظام الهرمي
-    for p in PERMISSIONS_LIST:
-        if p not in DEFAULT_PERMS[rank_name] and rank_name != "مطور":
-            continue
+    # عرض الصلاحيات المسموحة فقط لهذه الرتبة
+    allowed = RANK_LIMITS.get(rank_name, [])
+    for p in allowed:
         status = "✅" if perms.get(rank_name, {}).get(p) else "❌"
         body += f"• {p} ⌯ {status}\n"
     
@@ -95,22 +103,7 @@ async def show_rank_perms(event):
     await event.edit(header + body + footer)
 
 # ==========================================
-# 2. مثال لكيفية استخدام الحماية (في الكتم مثلاً)
-# ==========================================
-@client.on(events.NewMessage(outgoing=True, pattern=r"^\.كتم$"))
-async def mute_cmd(event):
-    if not event.is_reply: return
-    reply = await event.get_reply_message()
-    
-    # فحص الهرمية قبل التنفيذ
-    if not await check_hierarchy(event, reply.sender_id):
-        return # يتوقف التنفيذ ويمسح الرسالة بعد 10 ثواني كما في الدالة
-
-    # إذا عبر الفحص، يكمل الكود طبيعي...
-    await event.edit("✅ **تم الكتم بنجاح (رتبتك تسمح بذلك).**")
-
-# ==========================================
-# 3. أمر التفعيل/التعطيل
+# 3. أمر التفعيل والتعطيل (تحديث permissions.json)
 # ==========================================
 @client.on(events.NewMessage(outgoing=True, pattern=r"^\.(تفعيل|تعطيل) (.*) (مميز|ادمن|مدير|مطور)$"))
 async def toggle_perms(event):
@@ -118,15 +111,28 @@ async def toggle_perms(event):
     perm_name = event.pattern_match.group(2).strip()
     rank_name = event.pattern_match.group(3)
     
-    # منع تفعيل صلاحيات خارج النطاق المسموح للرتبة
-    if perm_name not in DEFAULT_PERMS[rank_name] and rank_name != "مطور":
-        return await event.edit(f"⚠️ **رتبة {rank_name} لا تدعم صلاحية {perm_name} أصلاً!**")
+    # فحص القيود
+    if perm_name not in RANK_LIMITS[rank_name]:
+        return await event.edit(f"⚠️ **رتبة {rank_name} لا تدعم صلاحية {perm_name}!**")
 
-    path_perms, _, _ = get_paths(event.chat_id)
+    path_perms, _ = get_paths(event.chat_id)
     perms = load_permissions(path_perms)
     
+    for f in VORTEX:
+        await event.edit(f"⌯ {f} 〔 جاري {action} {perm_name}... 〕 {f} ⌯")
+        await asyncio.sleep(0.1)
+
     perms[rank_name][perm_name] = (action == "تفعيل")
     with open(path_perms, "w", encoding="utf-8") as f:
         json.dump(perms, f, indent=4, ensure_ascii=False)
     
-    await event.edit(f"⚙️ **تم {action} {perm_name} لـ {rank_name} بنجاح ✅**")
+    status_icon = "✅" if action == "تفعيل" else "❌"
+    res = (
+        "★────────☭────────★\n"
+        "   ☭ • 𝑼𝑷𝑫𝑨𝑻𝑬 𝑫𝑶𝑵𝑬 • ☭\n"
+        "★────────☭────────★\n\n"
+        f"• **تم {action} {perm_name} لـ {rank_name}** {status_icon}\n"
+        "━━━━━━━━━━━━━━━━━━━\n"
+        "• 𝑫𝑬𝑽 𝑩𝒚 ⌯〔 @NETH_RON 〕⌯"
+    )
+    await event.edit(res)
