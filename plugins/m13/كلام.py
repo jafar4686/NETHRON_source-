@@ -1,51 +1,49 @@
 import __main__
 from telethon import events
 import asyncio
-from g4f.client import Client # نستخدم الذكاء الاصطناعي للتصحيح الدقيق
+from g4f.client import Client
 
 client = __main__.client
 ai_client = Client()
 
-# إعدادات الميزة في الذاكرة
-if not hasattr(__main__, 'autofix_status'):
-    __main__.autofix_status = False
+# حالة الميزة
+if not hasattr(__main__, 'fix_mode'):
+    __main__.fix_mode = True
 
-@client.on(events.NewMessage(outgoing=True, pattern=r"^\.تفعيل التصحيح$"))
-async def enable_fix(e):
-    __main__.autofix_status = True
-    await e.edit("✅ **تم تفعيل مصحح الأخطاء الإملائية تلقائياً.**\nسيقوم السورس بتعديل بدلياتك فوراً!")
-
-@client.on(events.NewMessage(outgoing=True, pattern=r"^\.تعطيل التصحيح$"))
-async def disable_fix(e):
-    __main__.autofix_status = False
-    await e.edit("❌ **تم تعطيل مصحح الأخطاء الإملائية.**")
-
-# محرك التصحيح التلقائي
 @client.on(events.NewMessage(outgoing=True))
-async def corrector_handler(event):
-    # لا يصحح الأوامر التي تبدأ بنقطة ولا يعمل إذا كانت الميزة معطلة
-    if not __main__.autofix_status or event.text.startswith("."):
+async def silent_corrector(event):
+    # إذا الميزة معطلة أو الرسالة أمر (تبدأ بنقطة) لا تدخل
+    if not __main__.fix_mode or event.text.startswith("."):
         return
 
-    text = event.text
-    # نتأكد أن النص طويل كفاية ليكون جملة (أكثر من كلمة واحدة)
-    if len(text.split()) < 1:
+    original_text = event.text
+    if not original_text or len(original_text) < 2:
         return
 
     try:
-        # نرسل النص للذكاء الاصطناعي بطلب "تصحيح فقط" بدون كلام إضافي
+        # نطلب من الذكاء الاصطناعي يعطينا الجملة الصحيحة فقططط بدون أي حرف زايد
         response = ai_client.chat.completions.create(
             model="gpt-4",
-            messages=[{"role": "system", "content": "أنت مصحح لغوي سريع. إذا وجد خطأ إملائي في النص التالي، أرسل النص المصحح فقط بدون أي شرح. إذا كان النص صحيحاً، أرسل كلمة 'صحيح'."},
-                      {"role": "user", "content": text}]
+            messages=[
+                {"role": "system", "content": "أنت مصحح إملائي صامت. وظيفتك هي إعادة صياغة الجملة العربية المليئة بالأخطاء (البدليات) إلى جملة صحيحة. أرسل الجملة المصححة فقط بدون أي تعليق أو مقدمات. إذا كانت الجملة صحيحة أصلاً، أرسل نفس الجملة."},
+                {"role": "user", "content": original_text}
+            ]
         )
         
         corrected_text = response.choices[0].message.content.strip()
 
-        # إذا كان النص مختلفاً عن الأصلي وليس كلمة "صحيح"
-        if corrected_text.lower() != "صحيح" and corrected_text != text:
-            # نقوم بتعديل الرسالة الأصلية للنص الصحيح
+        # إذا لقى خطأ وعدله، يسوي تعديل للرسالة فوراً
+        if corrected_text != original_text:
             await event.edit(corrected_text)
             
-    except Exception as e:
-        print(f"خطأ في التصحيح: {e}")
+    except:
+        pass # إذا صار خطأ بالاتصال يسكت وما يسوي شي
+
+# أوامر التحكم (تقدر تمسحها إذا تريدها تشتغل دوم)
+@client.on(events.NewMessage(outgoing=True, pattern=r"^\.(تفعيل|تعطيل) التصحيح$"))
+async def toggle_fix(event):
+    __main__.fix_mode = True if "تفعيل" in event.text else False
+    status = "شغال ✅" if __main__.fix_mode else "معطل ❌"
+    await event.edit(f"⚙️ **مصحح البدليات التلقائي:** {status}")
+    await asyncio.sleep(2)
+    await event.delete()
