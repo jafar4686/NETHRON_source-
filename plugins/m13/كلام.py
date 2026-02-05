@@ -1,67 +1,51 @@
-import __main__, asyncio
+import __main__
 from telethon import events
-from spellchecker import SpellChecker
+import asyncio
+from g4f.client import Client # نستخدم الذكاء الاصطناعي للتصحيح الدقيق
 
-# استخراج الكلاينت
-client = getattr(__main__, 'client', None)
+client = __main__.client
+ai_client = Client()
 
-# تعريف المصحح للغة العربية (يعمل تلقائياً بالاحتمالات)
-# ملاحظة: سنستخدم منطق الفحص الذكي للكلمات
-spell = SpellChecker(language=None) # لغة مخصصة
+# إعدادات الميزة في الذاكرة
+if not hasattr(__main__, 'autofix_status'):
+    __main__.autofix_status = False
 
+@client.on(events.NewMessage(outgoing=True, pattern=r"^\.تفعيل التصحيح$"))
+async def enable_fix(e):
+    __main__.autofix_status = True
+    await e.edit("✅ **تم تفعيل مصحح الأخطاء الإملائية تلقائياً.**\nسيقوم السورس بتعديل بدلياتك فوراً!")
+
+@client.on(events.NewMessage(outgoing=True, pattern=r"^\.تعطيل التصحيح$"))
+async def disable_fix(e):
+    __main__.autofix_status = False
+    await e.edit("❌ **تم تعطيل مصحح الأخطاء الإملائية.**")
+
+# محرك التصحيح التلقائي
 @client.on(events.NewMessage(outgoing=True))
-async def auto_detector_corrector(event):
-    # نتخطى الروابط، الأوامر، والرسائل القصيرة جداً
-    if not event.text or event.text.startswith((".", "$", "/")) or len(event.text) < 3:
+async def corrector_handler(event):
+    # لا يصحح الأوامر التي تبدأ بنقطة ولا يعمل إذا كانت الميزة معطلة
+    if not __main__.autofix_status or event.text.startswith("."):
         return
 
-    original_text = event.text
-    words = original_text.split()
-    corrected_list = []
-    has_fix = False
+    text = event.text
+    # نتأكد أن النص طويل كفاية ليكون جملة (أكثر من كلمة واحدة)
+    if len(text.split()) < 1:
+        return
 
-    for word in words:
-        # إذا الكلمة طولها أكثر من 3 حروف (حتى نتجنب تصحيح الأسماء القصيرة غلط)
-        if len(word) > 3:
-            # الخوارزمية تبحث عن أقرب كلمة منطقية
-            # هنا نضع الكلمات الشائعة التي نريد للبوت أن يصححها دائماً
-            smart_fixes = {
-                "سلاو": "سلام",
-                "عليكيو": "عليكم",
-                "اشونك": "شلونك",
-                "الاه": "الله",
-                "انشاءالله": "إن شاء الله",
-                "هلوو": "هلو",
-                "اشكرك": "مشكور"
-            }
+    try:
+        # نرسل النص للذكاء الاصطناعي بطلب "تصحيح فقط" بدون كلام إضافي
+        response = ai_client.chat.completions.create(
+            model="gpt-4",
+            messages=[{"role": "system", "content": "أنت مصحح لغوي سريع. إذا وجد خطأ إملائي في النص التالي، أرسل النص المصحح فقط بدون أي شرح. إذا كان النص صحيحاً، أرسل كلمة 'صحيح'."},
+                      {"role": "user", "content": text}]
+        )
+        
+        corrected_text = response.choices[0].message.content.strip()
+
+        # إذا كان النص مختلفاً عن الأصلي وليس كلمة "صحيح"
+        if corrected_text.lower() != "صحيح" and corrected_text != text:
+            # نقوم بتعديل الرسالة الأصلية للنص الصحيح
+            await event.edit(corrected_text)
             
-            if word in smart_fixes:
-                corrected_list.append(smart_fixes[word])
-                has_fix = True
-                continue
-
-            # فحص "المسافة" بين الحروف (لو كاتب حرفين مقلوبين)
-            # مثال: "البيتت" -> "البيت"
-            # إذا كانت الكلمة تنتهي بحرف مكرر 3 مرات، يمسح الزيادة
-            if len(word) > 3 and word[-1] == word[-2] == word[-3]:
-                fixed_word = word.rstrip(word[-1]) + word[-1]
-                corrected_list.append(fixed_word)
-                has_fix = True
-            else:
-                corrected_list.append(word)
-        else:
-            corrected_list.append(word)
-
-    if has_fix:
-        final_text = " ".join(corrected_list)
-        if final_text != original_text:
-            # ننتظر ثانية وحدة حتى ما يبين بوت سريع ويحظرنا التلي
-            await asyncio.sleep(0.5)
-            await event.edit(final_text)
-
-# أمر تشغيل/إيقاف
-@client.on(events.NewMessage(outgoing=True, pattern=r"^\.تصحيح (اون|اوف)$"))
-async def toggle_speller(event):
-    # هذا الأمر فقط للشكل، الكود يعمل تلقائياً
-    status = event.pattern_match.group(1)
-    await event.edit(f"⚙️ **تم تحويل المصحح الذكي إلى: {status}**")
+    except Exception as e:
+        print(f"خطأ في التصحيح: {e}")
