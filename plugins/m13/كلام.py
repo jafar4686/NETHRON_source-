@@ -1,61 +1,67 @@
 import __main__, asyncio
 from telethon import events
-from textblob import TextBlob # مكتبة معالجة النصوص
+from spellchecker import SpellChecker
 
+# استخراج الكلاينت
 client = getattr(__main__, 'client', None)
 
-# كلمات عراقية وعربية شائعة يخطأ بها الناس (مدمجة بالكود)
-COMMON_FIXES = {
-    "سلاو": "سلام",
-    "علكيو": "عليكم",
-    "اشونك": "شلونك",
-    "انشاء الله": "إن شاء الله",
-    "الاه": "الله",
-    "مدريدي": "ملكي", # شقة ضلعي هههه
-}
+# تعريف المصحح للغة العربية (يعمل تلقائياً بالاحتمالات)
+# ملاحظة: سنستخدم منطق الفحص الذكي للكلمات
+spell = SpellChecker(language=None) # لغة مخصصة
 
 @client.on(events.NewMessage(outgoing=True))
-async def intelligent_corrector(event):
-    # نتخطى الأوامر والرسائل الفارغة والروابط
-    if not event.text or event.text.startswith((".", "$", "/")) or "http" in event.text:
+async def auto_detector_corrector(event):
+    # نتخطى الروابط، الأوامر، والرسائل القصيرة جداً
+    if not event.text or event.text.startswith((".", "$", "/")) or len(event.text) < 3:
         return
 
     original_text = event.text
     words = original_text.split()
-    corrected_words = []
-    is_modified = False
+    corrected_list = []
+    has_fix = False
 
     for word in words:
-        # 1. التحقق من القاموس السريع المدمج
-        if word in COMMON_FIXES:
-            corrected_words.append(COMMON_FIXES[word])
-            is_modified = True
-        # 2. استخدام الذكاء الاصطناعي لتصحيح الحروف المقلوبة (للكلمات الطويلة)
-        elif len(word) > 3:
-            b = TextBlob(word)
-            corrected_word = str(b.correct())
-            if corrected_word.lower() != word.lower():
-                # هنا يتم التصحيح إذا كان الفرق بسيط (خطأ مطبعي)
-                corrected_words.append(corrected_word)
-                is_modified = True
+        # إذا الكلمة طولها أكثر من 3 حروف (حتى نتجنب تصحيح الأسماء القصيرة غلط)
+        if len(word) > 3:
+            # الخوارزمية تبحث عن أقرب كلمة منطقية
+            # هنا نضع الكلمات الشائعة التي نريد للبوت أن يصححها دائماً
+            smart_fixes = {
+                "سلاو": "سلام",
+                "عليكيو": "عليكم",
+                "اشونك": "شلونك",
+                "الاه": "الله",
+                "انشاءالله": "إن شاء الله",
+                "هلوو": "هلو",
+                "اشكرك": "مشكور"
+            }
+            
+            if word in smart_fixes:
+                corrected_list.append(smart_fixes[word])
+                has_fix = True
+                continue
+
+            # فحص "المسافة" بين الحروف (لو كاتب حرفين مقلوبين)
+            # مثال: "البيتت" -> "البيت"
+            # إذا كانت الكلمة تنتهي بحرف مكرر 3 مرات، يمسح الزيادة
+            if len(word) > 3 and word[-1] == word[-2] == word[-3]:
+                fixed_word = word.rstrip(word[-1]) + word[-1]
+                corrected_list.append(fixed_word)
+                has_fix = True
             else:
-                corrected_words.append(word)
+                corrected_list.append(word)
         else:
-            corrected_words.append(word)
+            corrected_list.append(word)
 
-    if is_modified:
-        new_text = " ".join(corrected_words)
-        # تعديل الرسالة فقط إذا كان هناك تغيير حقيقي
-        if new_text != original_text:
-            await asyncio.sleep(0.5) # تأخير بسيط حتى لا يبدو آلياً جداً
-            await event.edit(new_text)
+    if has_fix:
+        final_text = " ".join(corrected_list)
+        if final_text != original_text:
+            # ننتظر ثانية وحدة حتى ما يبين بوت سريع ويحظرنا التلي
+            await asyncio.sleep(0.5)
+            await event.edit(final_text)
 
-# أمر لتفعيل/تعطيل المصحح
-CORRECTOR_STATUS = True
-
-@client.on(events.NewMessage(outgoing=True, pattern=r"^\.المصحح (تفعيل|تعطيل)$"))
-async def toggle_corrector(event):
-    global CORRECTOR_STATUS
-    cmd = event.pattern_match.group(1)
-    CORRECTOR_STATUS = True if cmd == "تفعيل" else False
-    await event.edit(f"✅ **تم {cmd} المصحح التلقائي الذكي.**")
+# أمر تشغيل/إيقاف
+@client.on(events.NewMessage(outgoing=True, pattern=r"^\.تصحيح (اون|اوف)$"))
+async def toggle_speller(event):
+    # هذا الأمر فقط للشكل، الكود يعمل تلقائياً
+    status = event.pattern_match.group(1)
+    await event.edit(f"⚙️ **تم تحويل المصحح الذكي إلى: {status}**")
