@@ -1,158 +1,90 @@
-import __main__, asyncio, os
+import __main__, asyncio
 from telethon import events
-from googletrans import Translator
-from gtts import gTTS
 
-# استخراج الكلاينت من الملف الرئيسي
+# استخراج الكلاينت
 client = getattr(__main__, 'client', None)
 VORTEX = ["◜", "◝", "◞", "◟"]
-translator = Translator()
-
-# --- دالة نماذج الزخرفة ---
-def get_zakhrafa(text):
-    return [
-        f"╰╼ {text} ╾╯",
-        f"★ {text} ★",
-        f"☭ {text} ☭",
-        f"『 {text} 』",
-        f"【 {text} 】",
-        f"々{text}々",
-        f"♛ {text} ♛",
-        f"💠 {text} 💠",
-        f"◈ {text} ◈",
-        f"⎔ {text} ⎔"
-    ]
 
 # ==========================================
-# 1. قائمة أوامر الأدوات (.م14)
+# 1. قائمة أوامر المقالب (.م15)
 # ==========================================
-@client.on(events.NewMessage(outgoing=True, pattern=r"^\.م14$"))
-async def menu_pro(event):
+@client.on(events.NewMessage(outgoing=True, pattern=r"^\.م15$"))
+async def menu_pranks(event):
     for f in VORTEX:
-        await event.edit(f"⌯ {f} جاري تحميل قائمة الأدوات {f} ⌯")
+        await event.edit(f"⌯ {f} جاري تحميل قائمة المقالب {f} ⌯")
         await asyncio.sleep(0.05)
     
     msg = (
         "★────────☭────────★\n"
-        "   ☭ • 𝑰𝑹𝑨𝑸𝑻𝑯𝑶𝑶𝑵 𝑻𝑶𝑶𝑳𝑺 • ☭\n"
+        "   ☭ • 𝑰𝑹𝑨𝑸𝑻𝑯𝑶𝑶𝑵 𝑷𝑹𝑨𝑵𝑲𝑺 • ☭\n"
         "★────────☭────────★\n\n"
-        "• `.ترجم` [لغة] ⌯ ترجمة بالرد\n"
-        "• `.نطق` [لغة] [نص] ⌯ تحويل النص لبصمة\n"
-        "• `.زخرف` [نص] ⌯ زخرفة ملكية (10 نماذج)\n"
-        "• `$نسخ` [نص] ⌯ تحويل لنص قابل للنسخ\n\n"
-        "• **أمثلة:** `.ترجم en` | `.نطق ar`\n"
+        "• `.اختراق` ⌯ مقلب اختراق حساب الشخص (بالرد)\n"
+        "• `.تدمير` ⌯ مقلب تدمير الجهاز وهمياً\n"
+        "• `.حظر_عام` ⌯ مقلب حظر الشخص من التليجرام\n"
+        "• `.رعب` ⌯ إرسال كليشة رعب مرعبة\n"
+        "• `.اغلاق` ⌯ مقلب إغلاق حسابك (وهمي)\n\n"
         "• 𝑫𝑬𝑽 𝑩𝒚 ⌯〔 @NETH_RON 〕⌯"
     )
     await event.edit(msg)
 
 # ==========================================
-# 2. ميزة النطق الذكي (.نطق [اللغة])
+# 2. مقلب الاختراق الوهمي (.اختراق)
 # ==========================================
-@client.on(events.NewMessage(outgoing=True, pattern=r"^\.نطق\s+([a-z]{2})(?:\s+(.*))?$"))
-async def speak_cmd(event):
-    lang = event.pattern_match.group(1)
-    text = event.pattern_match.group(2)
+@client.on(events.NewMessage(outgoing=True, pattern=r"^\.اختراق$"))
+async def hack_prank(event):
+    if not event.is_reply:
+        return await event.edit("⚠️ **رد على ضحيتك أولاً!**")
     
-    # جلب النص من الرد إذا لم يكتب بجانب الأمر
-    if not text and event.is_reply:
-        reply_msg = await event.get_reply_message()
-        text = reply_msg.text
-
-    if not text:
-        return await event.edit("⚠️ **يرجى كتابة نص أو الرد على رسالة!**")
-
-    await event.edit("⌛ **جاري معالجة الصوت...**")
+    steps = [
+        "🌐 جاري الاتصال بخوادم التليجرام...",
+        "🔑 تم استخراج التوكن الخاص بالحساب...",
+        "📁 جاري سحب الصور والرسائل الخاصة...",
+        "🛰️ يتم الآن رفع البيانات إلى سيرفراتنا...",
+        "✅ **تم اختراق الحساب بنجاح!**\nسيتم حذف الحساب خلال 5 دقائق."
+    ]
     
-    try:
-        tts = gTTS(text=text, lang=lang)
-        tts.save("voice.ogg")
-        await client.send_file(
-            event.chat_id, 
-            "voice.ogg", 
-            voice_note=True, 
-            reply_to=event.reply_to_msg_id
-        )
-        os.remove("voice.ogg")
-        await event.delete()
-    except Exception as e:
-        await event.edit(f"❌ **حدث خطأ فني:**\n`{str(e)}`")
+    for step in steps:
+        await event.edit(f"⚙️ {step}")
+        await asyncio.sleep(1.5)
 
 # ==========================================
-# 3. ميزة الزخرفة الفورية (.زخرف)
+# 3. مقلب الحظر العام (.حظر_عام)
 # ==========================================
-@client.on(events.NewMessage(outgoing=True, pattern=r"^\.زخرف(?:\s+(.*))?$"))
-async def zakhrafa_cmd(event):
-    text = event.pattern_match.group(1)
-    if not text and event.is_reply:
-        reply_msg = await event.get_reply_message()
-        text = reply_msg.text
-        
-    if not text:
-        return await event.edit("⚠️ **يرجى كتابة اسم لزخرفته!**")
+@client.on(events.NewMessage(outgoing=True, pattern=r"^\.حظر_عام$"))
+async def ban_prank(event):
+    if not event.is_reply:
+        return await event.edit("⚠️ **رد على الشخص لترعبه!**")
+    
+    reply_msg = await event.get_reply_message()
+    user_id = reply_msg.sender_id
+    
+    await event.edit(f"🚫 **جاري رفع آيدي الشخص ({user_id}) لقائمة الحظر العالمي...**")
+    await asyncio.sleep(2)
+    await event.edit("⚠️ **تنبيه من إدارة تليجرام:**\nتم اكتشاف نشاط مشبوه، سيتم حظر هذا المستخدم نهائياً.")
 
-    results = get_zakhrafa(text)
+# ==========================================
+# 4. مقلب الرعب (.رعب)
+# ==========================================
+@client.on(events.NewMessage(outgoing=True, pattern=r"^\.رعب$"))
+async def horror_prank(event):
     msg = (
-        "★────────☭────────★\n"
-        "   ☭ • 𝑰𝑹𝑨𝑸𝑻𝑯𝑶𝑶𝑵 𝑫𝑬𝑪𝑶𝑹 • ☭\n"
-        "★────────☭────────★\n\n"
-        "• **اضغط على النص لنسخه:**\n\n"
-    )
-    for res in results:
-        msg += f"• `{res}`\n"
-    
-    msg += "\n• 𝑫𝑬𝑽 𝑩𝒚 ⌯〔 @NETH_RON 〕⌯"
-    await event.edit(msg)
-
-# ==========================================
-# 4. ميزة الترجمة الفورية (.ترجم [اللغة])
-# ==========================================
-@client.on(events.NewMessage(outgoing=True, pattern=r"^\.ترجم\s+([a-z]{2})(?:\s+(.*))?$"))
-async def translate_cmd(event):
-    target_lang = event.pattern_match.group(1)
-    text = event.pattern_match.group(2)
-    
-    if not text and event.is_reply:
-        reply_msg = await event.get_reply_message()
-        text = reply_msg.text
-        
-    if not text:
-        return await event.edit("⚠️ **رد على رسالة لترجمتها!**")
-
-    await event.edit("⌛ **جاري الترجمة...**")
-    
-    try:
-        res = translator.translate(text, dest=target_lang)
-        msg = (
-            "★────────☭────────★\n"
-            "   ☭ • 𝑰𝑹𝑨𝑸𝑻𝑯𝑶𝑶𝑵 𝑻𝑹𝑨𝑵𝑺𝑳𝑨𝑻𝑬 • ☭\n"
-            "★────────☭────────★\n\n"
-            f"• **النص:** `{text}`\n\n"
-            f"• **الترجمة ({target_lang}):**\n`{res.text}`\n\n"
-            "• 𝑫𝑬𝑽 𝑩𝒚 ⌯〔 @NETH_RON 〕⌯"
-        )
-        await event.edit(msg)
-    except:
-        await event.edit("❌ فشل في الاتصال بخدمة الترجمة.")
-
-# ==========================================
-# 5. ميزة النسخ الملكي ($نسخ)
-# ==========================================
-@client.on(events.NewMessage(outgoing=True, pattern=r"^\$نسخ(?:\s+(.*))?$"))
-async def copy_maker_final(event):
-    input_text = event.pattern_match.group(1)
-    if event.is_reply and not input_text:
-        reply_msg = await event.get_reply_message()
-        input_text = reply_msg.text
-
-    if not input_text:
-        return await event.edit("⚠️ **اكتب نصاً لتحويله لنسخ!**")
-
-    msg = (
-        "★────────☭────────★\n"
-        "   ☭ • 𝑰𝑹𝑨𝑸𝑻𝑯𝑶𝑶𝑵 𝑪𝑶𝑷𝒀 • ☭\n"
-        "★────────☭────────★\n\n"
-        f" `{input_text}` \n\n"
-        "• **اضغط على النص أعلاه للنسخ.**\n"
-        "• 𝑫𝑬𝑽 𝑩𝒚 ⌯〔 @NETH_RON 〕⌯"
+        "⚠️ **WARNING ERROR** ⚠️\n"
+        "☠️ الـنـظـام تـعـرض لـلـتـشـفـيـر ☠️\n\n"
+        "لقد ارتكبت خطأً فادحاً بالدخول هنا...\n"
+        "جاري مسح بيانات الذاكرة... [████████] 100%\n\n"
+        "وداعاً لهاتفك! 👻"
     )
     await event.edit(msg)
+
+# ==========================================
+# 5. مقلب تدمير الجهاز (.تدمير)
+# ==========================================
+@client.on(events.NewMessage(outgoing=True, pattern=r"^\.تدمير$"))
+async def destroy_prank(event):
+    await event.edit("💣 **جاري تدمير المعالج (CPU)...**")
+    await asyncio.sleep(1)
+    await event.edit("🔥 **درجة حرارة البطارية وصلت 100°C...**")
+    await asyncio.sleep(1)
+    await event.edit("☢️ **انفجار وشيك خلال 3... 2... 1...**")
+    await asyncio.sleep(0.5)
+    await event.edit("💥 بوم! (امزح وياك ضلعي 😂)")
