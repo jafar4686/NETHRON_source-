@@ -6,85 +6,78 @@ from telethon.errors import FloodWaitError
 client = getattr(__main__, 'client', None)
 VORTEX = ["◜", "◝", "◞", "◟"]
 
-# متغيرات السيطرة على الصيد
+# متغيرات السيطرة
 HUNTING = False
 
-# دالة لتوليد يوزرات عشوائية (ثلاثية، رباعية، خماسية)
-def generate_username(length=5):
-    chars = string.ascii_lowercase + string.digits
-    return "".join(random.choice(chars) for _ in range(length))
+# --- دالة توليد اليوزرات بكافة الأنواع ---
+def generate_username(style="عادي", length=5):
+    chars = string.ascii_lowercase
+    nums = string.digits
+    all_chars = chars + nums
+    
+    if style == "مميز":
+        # نمط: a_a_a1 أو x_x_xx
+        c = random.choice(chars)
+        return f"{c}_{c}_{c}{random.choice(all_chars)}"
+    
+    elif style == "غريب":
+        # نمط: aaabb أو xxyyx أو حروف مكررة
+        c1 = random.choice(chars)
+        c2 = random.choice(chars)
+        return random.choice([
+            f"{c1}{c1}{c1}{c2}{c2}", 
+            f"{c1}{c2}{c1}{c2}{c1}",
+            f"{c1}{c1}{c2}{c1}{c1}"
+        ])
+    
+    else: # النمط العادي
+        return "".join(random.choice(all_chars) for _ in range(length))
 
 # ==========================================
-# 1. منيو الصيد (.م16)
+# 1. منيو الصيد الشامل (.م16)
 # ==========================================
 @client.on(events.NewMessage(outgoing=True, pattern=r"^\.م16$"))
-async def menu_hunting(event):
+async def menu_hunting_full(event):
     msg = (
         "★────────☭────────★\n"
         "   ☭ • 𝑰𝑹𝑨𝑸𝑻𝑯𝑶𝑶𝑵 𝑯𝑼𝑵𝑻𝑬𝑹 • ☭\n"
         "★────────☭────────★\n\n"
-        "• `.صيد يوزر` [الطول] ⌯ يبدأ بفحص يوزرات متاحة\n"
-        "• `.صيد قناة` [الطول] ⌯ فحص وإنشاء قناة تلقائياً\n"
-        "• `.ايقاف الصيد` ⌯ لإيقاف جميع عمليات الفحص\n\n"
-        "• **مثال:** `.صيد قناة 5` (يصيد يوزر خماسي)\n"
+        "• **صيد الحسابات:**\n"
+        "  - `.صيد يوزر` [الطول] ⌯ يوزرات عشوائية\n"
+        "  - `.صيد مميز` ⌯ نمط (a_a_a1)\n"
+        "  - `.صيد غريب` ⌯ نمط (aaabb)\n\n"
+        "• **صيد القنوات (حجز تلقائي):**\n"
+        "  - `.صيد قناة` [الطول] ⌯ حجز يوزر عشوائي\n"
+        "  - `.صيد قناة مميز` ⌯ حجز يوزر نمط مميز\n"
+        "  - `.صيد قناة غريب` ⌯ حجز يوزر نمط غريب\n\n"
+        "• **التحكم:**\n"
+        "  - `.ايقاف الصيد` ⌯ لإيقاف جميع العمليات\n\n"
         "• 𝑫𝑬𝑽 𝑩𝒚 ⌯〔 @NETH_RON 〕⌯"
     )
     await event.edit(msg)
 
 # ==========================================
-# 2. أمر صيد يوزر حساب
+# 2. محرك الصيد الرئيسي
 # ==========================================
-@client.on(events.NewMessage(outgoing=True, pattern=r"^\.صيد يوزر\s+(\d+)$"))
-async def hunt_user(event):
+@client.on(events.NewMessage(outgoing=True, pattern=r"^\.صيد (يوزر|مميز|غريب|قناة|قناة مميز|قناة غريب)(?:\s+(\d+))?$"))
+async def hunter_engine(event):
     global HUNTING
     HUNTING = True
-    length = int(event.pattern_match.group(1))
-    attempts = 0
     
-    await event.edit(f"🚀 **بدأ صيد اليوزرات (طول {length})...**")
+    cmd_text = event.text
+    length = int(event.pattern_match.group(2)) if event.pattern_match.group(2) else 5
+    
+    # تحديد النمط والنوع
+    is_channel = "قناة" in cmd_text
+    if "مميز" in cmd_text: style = "مميز"
+    elif "غريب" in cmd_text: style = "غريب"
+    else: style = "عادي"
+    
+    attempts = 0
+    await event.edit(f"🚀 **بدأ صيد {style} ({'قنوات' if is_channel else 'حسابات'})...**")
     
     while HUNTING:
-        username = generate_username(length)
-        attempts += 1
-        
-        try:
-            # فحص إذا كان اليوزر متاحاً
-            result = await client(functions.account.CheckUsernameRequest(username=username))
-            
-            if result: # إذا كان متاحاً
-                await client.send_message("me", f"🎯 **يوزر متاح لقطته!**\n• اليوزر: @{username}\n• المحاولات: {attempts}")
-                await event.respond(f"✅ **تم إيجاد يوزر متاح:** @{username}")
-                break
-            
-            # تحديث الرسالة كل 5 محاولات لتقليل الضغط
-            if attempts % 5 == 0:
-                for f in VORTEX:
-                    await event.edit(f"⌯ {f} جاري الصيد.. محاولة: {attempts} {f} ⌯\n🔍 فحص: @{username}")
-                    await asyncio.sleep(0.1)
-
-            # تأخير بين 1 إلى 2 ثانية لتجنب الحظر كما طلبت
-            await asyncio.sleep(random.uniform(1.5, 2.5))
-            
-        except FloodWaitError as e:
-            await event.edit(f"⚠️ **توقف بسبب الفلود!** انتظر {e.seconds} ثانية.")
-            await asyncio.sleep(e.seconds)
-        except Exception:
-            continue
-
-# ==========================================
-# 3. صيد يوزر قناة + إنشاء تلقائي
-# ==========================================
-@client.on(events.NewMessage(outgoing=True, pattern=r"^\.صيد قناة\s+(\d+)$"))
-async def hunt_channel(event):
-    global HUNTING
-    HUNTING = True
-    length = int(event.pattern_match.group(1))
-    attempts = 0
-    
-    await event.edit(f"🛰 **بدأ صيد يوزرات القنوات (طول {length})...**")
-    
-    while HUNTING:
-        username = generate_username(length)
+        username = generate_username(style, length)
         attempts += 1
         
         try:
@@ -92,40 +85,47 @@ async def hunt_channel(event):
             available = await client(functions.account.CheckUsernameRequest(username=username))
             
             if available:
-                # إنشاء قناة جديدة فوراً
-                created_chat = await client(functions.channels.CreateChannelRequest(
-                    title=f"IraqThoon Hunter - {username}",
-                    about="هذه القناة تم حجزها بواسطة سكرابت الصيد الملكي",
-                    megagroup=False
-                ))
-                channel_id = created_chat.chats[0].id
+                if is_channel:
+                    # إنشاء القناة وحجز اليوزر
+                    create = await client(functions.channels.CreateChannelRequest(
+                        title=f"IraqThoon - {username}",
+                        about="تم الصيد والحجز بواسطة سورس عراق ثون الملكي"
+                    ))
+                    await client(functions.channels.UpdateUsernameRequest(
+                        channel=create.chats[0].id,
+                        username=username
+                    ))
+                    res_msg = f"🏆 **مبروك! تم صيد وحجز يوزر قناة:** @{username}"
+                else:
+                    res_msg = f"🎯 **لقطت يوزر {style} متاح:** @{username}"
                 
-                # تثبيت اليوزر على القناة
-                await client(functions.channels.UpdateUsernameRequest(
-                    channel=channel_id,
-                    username=username
-                ))
-                
-                await client.send_message("me", f"🏆 **مبروك! تم صيد يوزر وحجزه بقناة:**\n• اليوزر: @{username}\n• الرابط: t.me/{username}")
-                await event.respond(f"🔥 **تم صيد يوزر قناة وحجزه بنجاح:** @{username}")
+                await client.send_message("me", f"{res_msg}\nالمحاولات: {attempts}")
+                await event.respond(res_msg)
                 break
             
-            if attempts % 5 == 0:
-                await event.edit(f"⚙️ **جاري الصيد والحجز..**\nمحاولة رقم: `{attempts}`\nآخر فحص: @{username}")
+            # تحديث الواجهة كل 10 محاولات
+            if attempts % 10 == 0:
+                for f in VORTEX:
+                    await event.edit(f"⌯ {f} جاري صيد {style}.. محاولة: {attempts} {f} ⌯\n🔍 فحص: @{username}")
+                    await asyncio.sleep(0.05)
 
-            await asyncio.sleep(random.uniform(2.0, 3.5)) # تأخير أطول قليلاً للقنوات
+            # تأخير آمن بين المحاولات
+            await asyncio.sleep(random.uniform(1.8, 3.2))
             
         except FloodWaitError as e:
+            await event.edit(f"⚠️ **فلود!** توقف لمدة {e.seconds} ثانية.")
             await asyncio.sleep(e.seconds)
         except Exception as e:
             if "USERNAME_INVALID" in str(e): continue
-            else: break
+            else: 
+                print(f"Error: {e}")
+                continue
 
 # ==========================================
-# 4. إيقاف الصيد
+# 3. أمر الإيقاف
 # ==========================================
 @client.on(events.NewMessage(outgoing=True, pattern=r"^\.ايقاف الصيد$"))
-async def stop_hunting(event):
+async def stop_hunter(event):
     global HUNTING
     HUNTING = False
-    await event.edit("🛑 **تم إيقاف عمليات الصيد بنجاح.**")
+    await event.edit("🛑 **تم إيقاف جميع عمليات الصيد.**")
